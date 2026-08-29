@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StreamDrop Admin</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="ad">
+  <h1>Stream<span>Drop</span> 운영자 콘솔</h1>
+  <div class="env">
+    SodaGift: {% if mock %}<span class="badge warn">MOCK 모드</span>{% else %}<span class="badge ok">SANDBOX 연동</span>{% endif %}
+    &nbsp; 귓속말: {% if whisper_ready %}<span class="badge ok">설정됨</span>{% else %}<span class="badge dim">미설정 (스킵)</span>{% endif %}
+  </div>
+
+  <div class="controls">
+    <button id="btn-start">▶ 이벤트 시작</button>
+    <input id="draw-count" type="number" value="3" min="1">
+    <button id="btn-draw">🎲 추첨</button>
+    <button id="btn-reset" onclick="return confirm('정말 초기화할까요?') && doReset()">초기화</button>
+    <div class="status-line">상태: <span id="status" class="badge dim">-</span> · 참여 <b id="p-count">0</b>명</div>
+  </div>
+
+  <section>
+    <h2>참가자</h2>
+    <div class="chips" id="participants"><span style="color:var(--muted)">아직 없음</span></div>
+  </section>
+
+  <section>
+    <h2>당첨자 / 지급 현황</h2>
+    <table>
+      <thead><tr><th>닉네임</th><th>국가</th><th>상품</th><th>주문</th><th>링크</th><th>귓속말</th></tr></thead>
+      <tbody id="winners"><tr><td colspan="6" style="color:var(--muted)">추첨 전</td></tr></tbody>
+    </table>
+  </section>
+</div>
+
+<script>
+const TOKEN = "{{ token }}";
+const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+
+async function post(path) {
+  const opts = { method: 'POST', headers: { 'x-admin-token': TOKEN, 'Content-Type': 'application/json' } };
+  if (path === '/admin/draw') {
+    opts.body = JSON.stringify({ count: parseInt(document.getElementById('draw-count').value) || 1 });
+  }
+  const r = await fetch(path, opts);
+  if (!r.ok) alert((await r.json()).error || 'error');
+}
+document.getElementById('btn-start').onclick = () => post('/admin/start');
+document.getElementById('btn-draw').onclick = () => post('/admin/draw');
+function doReset() { post('/admin/reset'); return true; }
+
+const STATUS_LABEL = { idle: ['대기', 'dim'], open: ['접수중', 'ok'], drawn: ['추첨완료', 'warn'] };
+const W_STATUS = { pending: ['대기', 'dim'], ordering: ['주문중…', 'warn'], link_ready: ['✅ 발급됨', 'ok'], failed: ['❌ 실패', 'err'] };
+const WH_STATUS = { skipped: ['—', 'dim'], sending: ['발송중…', 'warn'], sent: ['✅ 전송됨', 'ok'], failed: ['❌ 실패', 'err'] };
+
+function badge(map, key) {
+  const [label, cls] = map[key] || [key, 'dim'];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function render(msg) {
+  const st = document.getElementById('status');
+  const [label, cls] = STATUS_LABEL[msg.status] || [msg.status, 'dim'];
+  st.textContent = label; st.className = `badge ${cls}`;
+  document.getElementById('p-count').textContent = msg.count;
+
+  if (msg.participants) {
+    const el = document.getElementById('participants');
+    el.innerHTML = msg.participants.length
+      ? msg.participants.map(p => `<span class="chip">${p.nickname} · ${p.country}</span>`).join('')
+      : '<span style="color:var(--muted)">아직 없음</span>';
+  }
+  if (msg.winners) {
+    const tb = document.getElementById('winners');
+    tb.innerHTML = msg.winners.length
+      ? msg.winners.map(w => `<tr>
+          <td><b>${w.nickname}</b></td><td>${w.country}</td>
+          <td>${w.product_name || '-'}</td><td>${w.order_id || '-'}</td>
+          <td>${badge(W_STATUS, w.status)}${w.error ? `<div style="color:var(--danger);font-size:11px">${w.error}</div>` : ''}</td>
+          <td>${badge(WH_STATUS, w.whisper_status)}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="6" style="color:var(--muted)">추첨 전</td></tr>';
+  }
+}
+
+let ws;
+function connect() {
+  ws = new WebSocket(`${proto}://${location.host}/ws/admin?token=${TOKEN}`);
+  ws.onmessage = (ev) => render(JSON.parse(ev.data));
+  ws.onclose = () => setTimeout(connect, 1500);
+}
+connect();
+setInterval(() => { if (ws && ws.readyState === 1) ws.send('ping'); }, 25000);
+</script>
+</body>
+</html>

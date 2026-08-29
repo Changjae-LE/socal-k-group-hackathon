@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>StreamDrop — 참여하기</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="join-wrap">
+  <div class="logo">🎁</div>
+  <h1>Stream<span>Drop</span></h1>
+  <p class="sub">라이브 이벤트에 참여하고 선물을 받아가세요</p>
+
+  {% if request.query_params.get('error') %}
+  <div class="error-box">
+    {% set e = request.query_params.get('error') %}
+    {% if e == 'closed' %}이벤트가 아직 열리지 않았어요. 잠시 후 다시 시도해 주세요.
+    {% elif e == 'country' %}국가를 선택해 주세요.
+    {% else %}Twitch 로그인에 실패했어요. 다시 시도해 주세요.{% endif %}
+  </div>
+  {% endif %}
+
+  <!-- 1) 로그인 전 -->
+  <div id="sec-login" class="card {% if session %}hidden{% endif %}">
+    <p style="margin-bottom:18px">Twitch 계정으로 참여해 주세요</p>
+    {% if twitch_ready %}
+    <a class="btn twitch" href="/join/login">🟣 Twitch로 참여하기</a>
+    {% else %}
+    <p class="gift-note">⚠️ 서버에 TWITCH_CLIENT_ID가 설정되지 않았습니다.</p>
+    {% endif %}
+    {% if debug %}
+    <a class="btn" style="background:#33334a;margin-top:10px" href="/join/dev">🧪 테스트 참여 (dev)</a>
+    {% endif %}
+  </div>
+
+  <!-- 2) 이벤트 대기 (로그인했지만 아직 idle) -->
+  <div id="sec-idle" class="card {% if not (session and event_status != 'open' and not joined and not is_loser and not winner) %}hidden{% endif %}">
+    <div class="pulse"></div>
+    <p><span class="nick">{{ session.nick if session }}</span>님, 환영해요!</p>
+    <p class="gift-note">이벤트가 곧 시작됩니다. 화면을 유지해 주세요.</p>
+  </div>
+
+  <!-- 3) 국가 선택 -->
+  <div id="sec-enter" class="card {% if not (session and event_status == 'open' and not joined) %}hidden{% endif %}">
+    <p><span class="nick">{{ session.nick if session }}</span>님, 선물을 받을 국가를 선택하세요</p>
+    <form method="post" action="/join/enter">
+      <select class="country" name="country" required>
+        <option value="" disabled selected>국가 선택</option>
+        {% for code, label in countries %}
+        <option value="{{ code }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn accent" type="submit">🎉 이벤트 참여하기</button>
+    </form>
+  </div>
+
+  <!-- 4) 참여 완료, 추첨 대기 -->
+  <div id="sec-wait" class="card {% if not (joined and event_status == 'open') %}hidden{% endif %}">
+    <div class="pulse"></div>
+    <h2 style="font-size:20px">참여 완료!</h2>
+    <p style="margin-top:8px"><span class="nick">{{ session.nick if session }}</span> · {{ participant.country if participant }}</p>
+    <p class="gift-note">추첨을 기다리는 중이에요. 화면을 닫지 마세요!</p>
+  </div>
+
+  <!-- 5) 당첨 -->
+  <div id="sec-win" class="card win {% if not winner %}hidden{% endif %}">
+    <div class="result-emoji">🎉</div>
+    <h2>축하합니다, 당첨!</h2>
+    <p style="margin:10px 0 4px" id="win-product">{{ winner.product_name or '선물을 준비하고 있어요...' }}</p>
+    <div id="gift-loading" class="{% if winner and winner.gift_link %}hidden{% endif %}">
+      <div class="pulse"></div>
+      <p class="gift-note">수령 링크를 발급하는 중입니다...</p>
+    </div>
+    <a id="gift-btn" class="btn accent {% if not (winner and winner.gift_link) %}hidden{% endif %}"
+       href="{{ winner.gift_link if winner and winner.gift_link else '#' }}" target="_blank">🎁 선물 수령하기</a>
+    <p class="gift-note">이 링크는 본인 전용입니다. 절대 공유하지 마세요.<br>Twitch 귓속말로도 전달됩니다.</p>
+  </div>
+
+  <!-- 6) 낙첨 -->
+  <div id="sec-lose" class="card lose {% if not is_loser %}hidden{% endif %}">
+    <div class="result-emoji">😢</div>
+    <h2>아쉽지만 다음 기회에!</h2>
+    <p class="gift-note">참여해 주셔서 감사합니다.</p>
+  </div>
+</div>
+
+<script>
+const hasSession = {{ 'true' if session else 'false' }};
+function show(id) {
+  for (const sec of document.querySelectorAll('.card[id^="sec-"]')) sec.classList.add('hidden');
+  document.getElementById(id).classList.remove('hidden');
+}
+if (hasSession) {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  let ws;
+  function connect() {
+    ws = new WebSocket(`${proto}://${location.host}/ws/join`);
+    ws.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'state') {
+        // 이벤트가 열리면(open) 아직 미참여 화면은 새로고침해서 국가선택 표시
+        const idle = !document.getElementById('sec-idle').classList.contains('hidden');
+        if (msg.status === 'open' && idle) location.reload();
+      } else if (msg.type === 'result') {
+        show(msg.won ? 'sec-win' : 'sec-lose');
+      } else if (msg.type === 'gift') {
+        document.getElementById('win-product').textContent = msg.product_name;
+        const btn = document.getElementById('gift-btn');
+        btn.href = msg.link;
+        btn.classList.remove('hidden');
+        document.getElementById('gift-loading').classList.add('hidden');
+        show('sec-win');
+      } else if (msg.type === 'reset') {
+        location.reload();
+      }
+    };
+    ws.onclose = () => setTimeout(connect, 1500);
+  }
+  connect();
+  setInterval(() => { if (ws && ws.readyState === 1) ws.send('ping'); }, 25000);
+}
+</script>
+</body>
+</html>

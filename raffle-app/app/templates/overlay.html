@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>StreamDrop Overlay</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="ov" id="main-stage">
+  <div class="qr-card">
+    <img src="/qr.png" alt="QR">
+    <div class="scan">📱 QR 스캔하고 참여!</div>
+  </div>
+  <div class="panel">
+    <div class="brand">Stream<span>Drop</span></div>
+    <div class="tagline">실시간 글로벌 기프트 추첨</div>
+    <div id="live-block" class="hidden">
+      <div class="count-label">현재 참여자</div>
+      <div class="count" id="count">0</div>
+    </div>
+    <div id="idle-block" class="idle-note">이벤트가 곧 시작됩니다 ✨</div>
+  </div>
+</div>
+
+<div class="ov winners-stage hidden" id="winners-stage">
+  <h1>🎉 <span>WINNERS</span> 🎉</h1>
+  <div class="winner-grid" id="winner-grid"></div>
+</div>
+
+<script>
+const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+const countEl = document.getElementById('count');
+
+function setCount(n) {
+  const from = parseInt(countEl.textContent) || 0;
+  if (n === from) { countEl.textContent = n; return; }
+  const start = performance.now(), dur = 400;
+  (function tick(t) {
+    const p = Math.min(1, (t - start) / dur);
+    countEl.textContent = Math.round(from + (n - from) * p);
+    if (p < 1) requestAnimationFrame(tick);
+  })(start);
+}
+
+function showWinners(winners) {
+  document.getElementById('main-stage').classList.add('hidden');
+  const stage = document.getElementById('winners-stage');
+  const grid = document.getElementById('winner-grid');
+  grid.innerHTML = '';
+  stage.classList.remove('hidden');
+  winners.forEach((w, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'winner-chip';
+    chip.style.animationDelay = `${i * 0.25}s`;
+    chip.textContent = `${w.nickname} · ${w.country}`;
+    grid.appendChild(chip);
+  });
+}
+
+function resetStage() {
+  document.getElementById('winners-stage').classList.add('hidden');
+  document.getElementById('main-stage').classList.remove('hidden');
+  countEl.textContent = '0';
+  document.getElementById('live-block').classList.add('hidden');
+  document.getElementById('idle-block').classList.remove('hidden');
+}
+
+let ws;
+function connect() {
+  ws = new WebSocket(`${proto}://${location.host}/ws/overlay`);
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === 'state') {
+      if (msg.reset) { resetStage(); return; }
+      setCount(msg.count);
+      if (msg.status === 'open') {
+        document.getElementById('idle-block').classList.add('hidden');
+        document.getElementById('live-block').classList.remove('hidden');
+      }
+    } else if (msg.type === 'winners') {
+      showWinners(msg.winners);
+    }
+  };
+  ws.onclose = () => setTimeout(connect, 1500);
+}
+connect();
+setInterval(() => { if (ws && ws.readyState === 1) ws.send('ping'); }, 25000);
+</script>
+</body>
+</html>
