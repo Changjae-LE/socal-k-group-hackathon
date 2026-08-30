@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" class="join-page">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>StreamDrop — 참여하기</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 <body>
 <div class="join-wrap">
@@ -28,26 +28,28 @@
 
   <div id="sec-enter" class="card hidden">
     <p><span class="nick" id="enter-nick"></span>님, 선물을 받을 국가를 선택하세요</p>
-    <select class="country" id="country" required>
-      <option value="" disabled selected>국가 선택</option>
-      <option value="KR">🇰🇷 South Korea</option>
-      <option value="US">🇺🇸 United States</option>
-      <option value="JP">🇯🇵 Japan</option>
-      <option value="CA">🇨🇦 Canada</option>
-      <option value="AU">🇦🇺 Australia</option>
-      <option value="GB">🇬🇧 United Kingdom</option>
-      <option value="FR">🇫🇷 France</option>
-      <option value="SG">🇸🇬 Singapore</option>
-      <option value="HK">🇭🇰 Hong Kong</option>
-      <option value="TW">🇹🇼 Taiwan</option>
-      <option value="PH">🇵🇭 Philippines</option>
-      <option value="TH">🇹🇭 Thailand</option>
-      <option value="VN">🇻🇳 Vietnam</option>
-      <option value="MY">🇲🇾 Malaysia</option>
-      <option value="ID">🇮🇩 Indonesia</option>
-      <option value="IN">🇮🇳 India</option>
-      <option value="CN">🇨🇳 China</option>
-    </select>
+    <div class="country-picker" id="country-picker">
+      <select class="country" id="country" required>
+        <option value="" disabled selected>국가 선택</option>
+        <option value="KR">🇰🇷 South Korea</option>
+        <option value="US">🇺🇸 United States</option>
+        <option value="JP">🇯🇵 Japan</option>
+        <option value="CA">🇨🇦 Canada</option>
+        <option value="AU">🇦🇺 Australia</option>
+        <option value="GB">🇬🇧 United Kingdom</option>
+        <option value="FR">🇫🇷 France</option>
+        <option value="SG">🇸🇬 Singapore</option>
+        <option value="HK">🇭🇰 Hong Kong</option>
+        <option value="TW">🇹🇼 Taiwan</option>
+        <option value="PH">🇵🇭 Philippines</option>
+        <option value="TH">🇹🇭 Thailand</option>
+        <option value="VN">🇻🇳 Vietnam</option>
+        <option value="MY">🇲🇾 Malaysia</option>
+        <option value="ID">🇮🇩 Indonesia</option>
+        <option value="IN">🇮🇳 India</option>
+        <option value="CN">🇨🇳 China</option>
+      </select>
+    </div>
     <button class="btn accent" id="btn-enter" type="button">🎉 이벤트 참여하기</button>
   </div>
 
@@ -100,6 +102,44 @@ function loadSession() {
 
 function saveSession(data) {
   localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+}
+
+function setupCountryPicker() {
+  const select = document.getElementById("country");
+  const wrap = document.getElementById("country-picker");
+  if (!select || !wrap || wrap.querySelector(".country-display")) return;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "country-display";
+  const list = document.createElement("div");
+  list.className = "country-list";
+  function label() {
+    const opt = select.options[select.selectedIndex];
+    btn.textContent = opt && opt.text ? opt.text : "국가 선택";
+  }
+  [...select.options].forEach((opt) => {
+    if (!opt.value) return;
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "country-item";
+    item.textContent = opt.text;
+    item.onclick = () => {
+      select.value = opt.value;
+      label();
+      wrap.classList.remove("open");
+    };
+    list.appendChild(item);
+  });
+  btn.onclick = (ev) => {
+    ev.preventDefault();
+    wrap.classList.toggle("open");
+  };
+  document.addEventListener("click", (ev) => {
+    if (!wrap.contains(ev.target)) wrap.classList.remove("open");
+  });
+  label();
+  wrap.appendChild(btn);
+  wrap.appendChild(list);
 }
 
 async function registerOnPublicEvent(session) {
@@ -220,6 +260,8 @@ function renderFromEvent(data) {
   if (session.uid) { show("sec-enter"); return; }
   show("sec-login");
 }
+
+setupCountryPicker();
 
 if (sdSendTwitchReturnToPublicJoin()) {
   // Twitch came back to localhost or another host; bounce to public /join.
