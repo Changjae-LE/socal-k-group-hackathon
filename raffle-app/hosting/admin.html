@@ -100,7 +100,7 @@ document.getElementById("btn-draw").onclick = async () => {
   const data = snap.data() || sdEmptyEvent();
   if (data.status !== "open") { alert("이벤트가 열린 상태에서만 추첨할 수 있습니다."); return; }
   const people = sdJoinedList(data);
-  if (!people.length) { alert("국가까지 선택한 참가자가 없습니다."); return; }
+  if (!people.length) { alert("국가 선택과 선물 수령 준비를 완료한 참가자가 없습니다. 참가자 화면을 새로고침한 뒤 다시 참여해 주세요."); return; }
   const count = parseInt(document.getElementById("draw-count").value, 10) || 1;
   const picked = sample(people, count);
   const winners = picked.map((p) => ({
