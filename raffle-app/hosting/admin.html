@@ -42,8 +42,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js?v=5"></script>
-<script src="/js/event.js?v=5"></script>
+<script src="/js/firebase-config.js?v=6"></script>
+<script src="/js/event.js?v=6"></script>
 <script>
 const token = new URLSearchParams(location.search).get("token");
 if (token !== window.STREAMDROP_ADMIN_TOKEN) {
@@ -53,7 +53,7 @@ if (token !== window.STREAMDROP_ADMIN_TOKEN) {
 }
 
 const STATUS_LABEL = { idle: ["대기", "dim"], open: ["접수중", "ok"], drawn: ["추첨완료", "warn"] };
-const W_STATUS = { pending: ["대기", "dim"], ordering: ["주문중…", "warn"], link_ready: ["✅ 발급됨", "ok"], failed: ["❌ 실패", "err"] };
+const W_STATUS = { pending: ["상품 준비중…", "dim"], choice_required: ["선택 대기", "warn"], order_approved: ["주문 승인", "warn"], ordering: ["주문중…", "warn"], link_ready: ["✅ 발급됨", "ok"], failed: ["❌ 실패", "err"] };
 const WH_STATUS = { skipped: ["—", "dim"], sending: ["발송중…", "warn"], sent: ["✅ 전송됨", "ok"], failed: ["❌ 실패", "err"] };
 
 function badge(map, key) {
@@ -84,7 +84,7 @@ function render(data) {
   document.getElementById("winners").innerHTML = winners.length
     ? winners.map((w) => `<tr>
         <td><b>${w.nickname}</b></td><td>${w.country}</td>
-        <td>${w.productName || "-"}</td><td>${w.orderId || "-"}</td>
+        <td>${w.productName || w.selectedProductName || "-"}</td><td>${w.orderId || "-"}</td>
         <td>${badge(W_STATUS, w.status)}</td>
         <td>${badge(WH_STATUS, w.whisperStatus || "skipped")}</td>
       </tr>`).join("")

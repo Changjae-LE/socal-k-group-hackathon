@@ -1,7 +1,7 @@
 # 🎁 StreamDrop
 
 라이브 방송(Twitch) 시청자 대상 실시간 글로벌 기프트 추첨 MVP.
-QR 스캔 → Twitch 로그인 참여 → 추첨 → 당첨자 폰 + Twitch 귓속말로 SodaGift 수령 링크 즉시 지급.
+QR 스캔 → Twitch 로그인 참여 → 추첨 → 당첨자가 SodaGift 상품 선택·주문 승인 → 수령 링크 지급.
 
 ## 공개 Hosting (Firebase, 무료)
 
@@ -67,7 +67,7 @@ cloudflared tunnel --url http://localhost:8000
 2. `.env`의 `SODAGIFT_API_KEY`에 설정 → mock에서 실연동으로 자동 전환
 
 - base URL: `https://biz-sandbox-api.sodagift.com`, 헤더 `SODA-API-KEY`
-- 흐름: `GET /v1/products?country_code=XX&delivery_method=LINK` → 최저가 ON_SALE 상품 → `POST /v1/orders`(LINK, 멱등키) → `GET /v1/orders/{id}` 폴링 → `order_items[].delivery.link`
+- 흐름: `GET /v1/products?country_code=XX&delivery_method=LINK` → 참가자에게 선택지 표시 → 참가자 승인 → `POST /v1/orders`(LINK, 멱등키) → `GET /v1/orders/{id}` 폴링 → `order_items[].delivery.link`
 - `orders.log`에는 주문 식별 정보만 기록하며 수령 URL은 평문으로 저장하지 않음
 - ⚠️ 수령 링크 보유자 = 수령자. API 키와 평문 링크는 Hosting/Firestore에 저장하지 않습니다.
 
@@ -79,19 +79,20 @@ cloudflared tunnel --url http://localhost:8000
 # 주문을 만들지 않고 현재 처리 대상만 확인
 python scripts/fulfill_firestore_winners.py --dry-run
 
-# Firestore 당첨 감지 → SodaGift 주문 → 암호화된 링크 전달
+# 당첨 감지 → 상품 선택지 게시. 참가자 승인 후에만 주문·암호화 링크 전달
 python scripts/fulfill_firestore_winners.py
 
 # 오류 원인을 수정한 뒤 실패한 지급 1건 재시도
 python scripts/fulfill_firestore_winners.py --once --retry-failed
 ```
 
-참가자 브라우저는 참여 시 수령용 공개키를 Firestore에 등록하고 개인키를 해당 기기에만 보관합니다. 지급 브리지는 SodaGift LINK를 암호화해 Firestore에 저장하므로 당첨자가 참여했던 기기만 링크를 열 수 있습니다. `--once`를 사용하면 당첨자 한 명만 처리하고 종료합니다.
+참가자 브라우저는 참여 시 수령용 공개키를 Firestore에 등록하고 개인키를 해당 기기에만 보관합니다. 지급 브리지는 먼저 안전한 상품 정보만 게시하며 이 단계에서는 주문하지 않습니다. 당첨자가 상품을 선택하고 “선택한 선물 받기”를 누른 후에만 주문하고, SodaGift LINK를 암호화해 Firestore에 저장합니다. `--once`는 한 단계만 처리하므로 데모 운영에는 지급 브리지를 계속 실행하는 방식을 권장합니다.
 
 현재 해커톤 Firestore 규칙은 공개 데모용입니다. 운영 서비스에서는 Firebase Authentication과 서버 전용 자격 증명으로 교체해야 합니다.
 
 ## 데모 시나리오
 1. 지급 브리지 실행 → 공개 `/admin`에서 "이벤트 시작" → 오버레이에 QR 표시
 2. 관객이 QR 스캔 → Twitch 로그인 → 국가 선택 → 참여 (오버레이 카운트 상승)
-3. "추첨" 클릭 → 오버레이 당첨자 발표 + 지급 브리지가 SodaGift LINK 발급
-4. 당첨자 폰이 암호화된 링크를 복호화 → 실제 "선물 수령하기" 버튼 표시
+3. "추첨" 클릭 → 오버레이 당첨자 발표 + 지급 브리지가 SodaGift 상품 선택지 게시
+4. 당첨자가 상품 선택 → “선택한 선물 받기” 클릭 → 이때 SodaGift 주문 생성
+5. 당첨자 폰이 암호화된 링크를 복호화 → 실제 “SodaGift에서 수령하기” 버튼 표시

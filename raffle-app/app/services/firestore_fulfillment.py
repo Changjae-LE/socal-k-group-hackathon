@@ -26,7 +26,8 @@ from app.services import sodagift
 
 log = logging.getLogger("streamdrop.firestore_fulfillment")
 
-GiftProvider = Callable[[str, str, str], Awaitable[dict[str, str]]]
+GiftProvider = Callable[[str, str, str, int], Awaitable[dict[str, str]]]
+OptionsProvider = Callable[[str], Awaitable[list[dict[str, Any]]]]
 
 
 def _decode_value(value: dict[str, Any]) -> Any:
@@ -198,6 +199,7 @@ def _is_placeholder(winner: dict[str, Any]) -> bool:
 
 
 def fulfillment_candidates(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return winners that need options or have explicitly approved an order."""
     if data.get("status") != "drawn":
         return []
     participants = data.get("participants") or {}
@@ -205,7 +207,17 @@ def fulfillment_candidates(data: dict[str, Any]) -> list[dict[str, Any]]:
     for winner in data.get("winners") or []:
         uid = _uid(winner)
         participant = participants.get(uid) or {}
-        if uid and _is_placeholder(winner) and participant.get("claimPublicKey"):
+        status = winner.get("status")
+        has_approved_product = bool(winner.get("selectedProductId"))
+        processable = status == "pending" or (
+            status == "order_approved" and has_approved_product
+        )
+        if (
+            uid
+            and processable
+            and not winner.get("encryptedGift")
+            and participant.get("claimPublicKey")
+        ):
             candidates.append(winner)
     return candidates
 
@@ -220,7 +232,9 @@ async def reset_failed_winners(store: FirestoreEventStore) -> int:
         reset_count = 0
         for winner in winners:
             if winner.get("status") == "failed" and not winner.get("encryptedGift"):
-                winner["status"] = "pending"
+                winner["status"] = (
+                    "order_approved" if winner.get("selectedProductId") else "pending"
+                )
                 winner.pop("error", None)
                 reset_count += 1
         if not reset_count:
@@ -255,6 +269,7 @@ async def _mutate_winner(
 async def fulfill_once(
     store: FirestoreEventStore,
     gift_provider: GiftProvider = sodagift.get_gift_link,
+    options_provider: OptionsProvider = sodagift.get_gift_options,
     dry_run: bool = False,
 ) -> int:
     snapshot = await store.get_event()
@@ -270,6 +285,35 @@ async def fulfill_once(
     uid = _uid(candidate)
     event_id = str(snapshot.data.get("eventId") or "")
     participant = (snapshot.data.get("participants") or {})[uid]
+    country = str(candidate.get("country") or participant.get("country") or "")
+
+    if candidate.get("status") == "pending":
+        try:
+            options = await options_provider(country)
+            if not options:
+                raise RuntimeError(f"no gift options available for country {country}")
+        except Exception as exc:
+            def mark_option_failed(winner: dict[str, Any]) -> None:
+                winner["status"] = "failed"
+                winner["error"] = str(exc)[:160]
+
+            await _mutate_winner(store, event_id, uid, mark_option_failed)
+            raise
+
+        def mark_choice_required(winner: dict[str, Any]) -> None:
+            winner["status"] = "choice_required"
+            winner["giftOptions"] = options
+            winner.pop("selectedProductId", None)
+            winner.pop("selectedProductName", None)
+            winner.pop("orderApprovedAt", None)
+            winner.pop("error", None)
+
+        if not await _mutate_winner(store, event_id, uid, mark_choice_required):
+            return 0
+        log.info("SodaGift choices ready for winner %s", uid)
+        return 1
+
+    product_id = int(candidate["selectedProductId"])
     public_key = participant["claimPublicKey"]
 
     def mark_ordering(winner: dict[str, Any]) -> None:
@@ -283,8 +327,9 @@ async def fulfill_once(
     try:
         result = await gift_provider(
             str(candidate.get("nickname") or participant.get("nickname") or "Winner"),
-            str(candidate.get("country") or participant.get("country") or ""),
+            country,
             ref_id,
+            product_id,
         )
         encrypted = encrypt_gift_link(result["link"], public_key)
     except Exception as exc:
@@ -303,6 +348,7 @@ async def fulfill_once(
             "encryptedGift": encrypted,
             "status": "link_ready",
         })
+        winner.pop("giftOptions", None)
         winner.pop("error", None)
 
     if not await _mutate_winner(store, event_id, uid, mark_ready):

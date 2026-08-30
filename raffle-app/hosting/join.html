@@ -62,8 +62,12 @@
     <div class="result-emoji">🎉</div>
     <h2>축하합니다, 당첨!</h2>
     <p style="margin:10px 0 4px" id="win-product">선물을 준비하고 있어요...</p>
-    <a id="gift-btn" class="btn accent hidden" target="_blank" rel="noopener">🎁 선물 수령하기</a>
-    <p class="gift-note" id="gift-status">안전한 수령 링크를 준비하고 있어요...</p>
+    <div id="gift-picker" class="hidden">
+      <div id="gift-options" class="gift-options"></div>
+      <button id="gift-approve" class="btn accent" type="button" disabled>선택한 선물 받기</button>
+    </div>
+    <a id="gift-btn" class="btn accent hidden" target="_blank" rel="noopener">🎁 SodaGift에서 수령하기</a>
+    <p class="gift-note" id="gift-status">선택 가능한 선물을 준비하고 있어요...</p>
     <p class="gift-note">이 링크는 본인 전용입니다. 절대 공유하지 마세요.</p>
   </div>
 
@@ -76,8 +80,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js?v=5"></script>
-<script src="/js/event.js?v=5"></script>
+<script src="/js/firebase-config.js?v=6"></script>
+<script src="/js/event.js?v=6"></script>
 <script>
 const SESSION_KEY = "sd_session";
 const COUNTRIES = { KR:"🇰🇷 South Korea", US:"🇺🇸 United States", JP:"🇯🇵 Japan", CA:"🇨🇦 Canada", AU:"🇦🇺 Australia", GB:"🇬🇧 United Kingdom", FR:"🇫🇷 France", SG:"🇸🇬 Singapore", HK:"🇭🇰 Hong Kong", TW:"🇹🇼 Taiwan", PH:"🇵🇭 Philippines", TH:"🇹🇭 Thailand", VN:"🇻🇳 Vietnam", MY:"🇲🇾 Malaysia", ID:"🇮🇩 Indonesia", IN:"🇮🇳 India", CN:"🇨🇳 China" };
@@ -149,6 +153,89 @@ async function decryptGiftLink(session, encrypted) {
   if (!/^https:\/\//i.test(link)) throw new Error("수령 링크 형식이 올바르지 않습니다.");
   return link;
 }
+
+let selectedGiftId = null;
+
+function renderGiftOptions(options) {
+  const container = document.getElementById("gift-options");
+  const approve = document.getElementById("gift-approve");
+  container.replaceChildren();
+  if (!options.some((option) => Number(option.id) === selectedGiftId)) selectedGiftId = null;
+
+  for (const option of options) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "gift-option";
+    if (Number(option.id) === selectedGiftId) card.classList.add("selected");
+
+    if (option.imageUrl) {
+      const image = document.createElement("img");
+      image.src = option.imageUrl;
+      image.alt = "";
+      image.loading = "lazy";
+      image.referrerPolicy = "no-referrer";
+      card.appendChild(image);
+    }
+
+    const copy = document.createElement("span");
+    const name = document.createElement("strong");
+    const price = document.createElement("small");
+    name.textContent = option.name || "Gift";
+    price.textContent = `${option.currency || ""} ${Number(option.amount || 0).toLocaleString()}`.trim();
+    copy.append(name, price);
+    card.appendChild(copy);
+    card.onclick = () => {
+      selectedGiftId = Number(option.id);
+      renderGiftOptions(options);
+    };
+    container.appendChild(card);
+  }
+  approve.disabled = selectedGiftId === null;
+}
+
+async function approveSelectedGift() {
+  const session = loadSession();
+  if (!session || selectedGiftId === null) throw new Error("선물을 선택해 주세요.");
+  const ref = sdEventRef();
+  await sdDb().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.data() || sdEmptyEvent();
+    const winners = [...(data.winners || [])];
+    const index = winners.findIndex((winner) => winner.uid === session.uid);
+    if (index < 0) throw new Error("당첨자 정보를 찾을 수 없습니다.");
+    const winner = { ...winners[index] };
+    if (winner.status !== "choice_required") {
+      throw new Error("이미 주문이 진행 중이거나 선택할 수 없는 상태입니다.");
+    }
+    const option = (winner.giftOptions || []).find(
+      (item) => Number(item.id) === selectedGiftId,
+    );
+    if (!option) throw new Error("선택한 상품을 다시 확인해 주세요.");
+    winners[index] = {
+      ...winner,
+      status: "order_approved",
+      selectedProductId: Number(option.id),
+      selectedProductName: option.name || "Gift",
+      orderApprovedAt: Date.now(),
+    };
+    tx.set(ref, { winners, updatedAt: Date.now() }, { merge: true });
+  });
+}
+
+document.getElementById("gift-approve").onclick = async () => {
+  const approve = document.getElementById("gift-approve");
+  approve.disabled = true;
+  approve.textContent = "주문 요청 중...";
+  try {
+    await approveSelectedGift();
+    showError("");
+  } catch (err) {
+    console.error(err);
+    approve.disabled = false;
+    approve.textContent = "선택한 선물 받기";
+    showError(err.message || "선물 선택을 저장하지 못했습니다.");
+  }
+};
 
 async function registerOnPublicEvent(session) {
   await ensureClaimKeys(session);
@@ -258,15 +345,32 @@ async function renderFromEvent(data) {
     if (winner) {
       show("sec-win");
       const product = document.getElementById("win-product");
+      const picker = document.getElementById("gift-picker");
+      const approve = document.getElementById("gift-approve");
       const button = document.getElementById("gift-btn");
       const status = document.getElementById("gift-status");
-      product.textContent = winner.productName || "선물을 준비하고 있어요...";
+      product.textContent = winner.productName || winner.selectedProductName || "선물을 준비하고 있어요...";
+      picker.classList.add("hidden");
       button.classList.add("hidden");
       button.removeAttribute("href");
       status.classList.remove("hidden");
-      status.textContent = winner.status === "failed"
-        ? "수령 링크 발급에 실패했습니다. 운영자에게 알려주세요."
-        : "안전한 수령 링크를 준비하고 있어요...";
+      approve.textContent = "선택한 선물 받기";
+
+      if (winner.status === "choice_required" && (winner.giftOptions || []).length) {
+        product.textContent = "원하는 선물을 선택하세요";
+        picker.classList.remove("hidden");
+        renderGiftOptions(winner.giftOptions);
+        status.textContent = "선택 후 버튼을 누르면 SodaGift 주문이 시작됩니다.";
+      } else if (winner.status === "order_approved") {
+        status.textContent = "선택을 확인했습니다. SodaGift 주문을 시작합니다...";
+      } else if (winner.status === "ordering") {
+        status.textContent = "SodaGift에서 선물 수령 링크를 발급하고 있어요...";
+      } else if (winner.status === "failed") {
+        status.textContent = "수령 링크 발급에 실패했습니다. 운영자에게 알려주세요.";
+      } else {
+        status.textContent = "선택 가능한 선물을 불러오고 있어요...";
+      }
+
       if (winner.encryptedGift) {
         try {
           button.href = await decryptGiftLink(session, winner.encryptedGift);
@@ -279,6 +383,7 @@ async function renderFromEvent(data) {
         }
       }
     } else if (joined) {
+
       show("sec-lose");
     } else {
       show("sec-idle");

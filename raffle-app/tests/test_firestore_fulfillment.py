@@ -91,13 +91,20 @@ class FulfillmentTests(unittest.IsolatedAsyncioTestCase):
                 "nickname": "winner",
                 "country": "KR",
                 "giftLink": "",
-                "status": "pending",
+                "status": "order_approved",
+                "selectedProductId": 42,
             }],
         })
         real_link = "https://sandbox.example/claim/secret-token"
 
-        async def gift_provider(_name: str, _country: str, ref_id: str) -> dict[str, str]:
+        async def gift_provider(
+            _name: str,
+            _country: str,
+            ref_id: str,
+            product_id: int,
+        ) -> dict[str, str]:
             self.assertEqual(ref_id, "sdevent01123")
+            self.assertEqual(product_id, 42)
             return {
                 "order_id": "987",
                 "product_name": "Test Gift",
@@ -113,6 +120,46 @@ class FulfillmentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(winner["productName"], "Test Gift")
         self.assertNotIn(real_link, str(winner))
         self.assertEqual(decrypt_claim(private_key, winner["encryptedGift"]), real_link)
+
+    async def test_pending_winner_gets_options_without_creating_order(self) -> None:
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        store = FakeStore({
+            "status": "drawn",
+            "eventId": "event-options",
+            "participants": {
+                "55": {
+                    "country": "CA",
+                    "claimPublicKey": public_jwk(private_key),
+                }
+            },
+            "winners": [{"uid": "55", "country": "CA", "status": "pending"}],
+        })
+
+        async def forbidden_gift_provider(*_args) -> dict[str, str]:
+            self.fail("pending winner must not create a SodaGift order")
+
+        async def options_provider(country: str) -> list[dict]:
+            self.assertEqual(country, "CA")
+            return [{
+                "id": 60048,
+                "name": "Demo Gift",
+                "amount": 10.0,
+                "currency": "USD",
+                "imageUrl": "https://example.com/gift.jpg",
+            }]
+
+        processed = await fulfill_once(
+            store,
+            gift_provider=forbidden_gift_provider,
+            options_provider=options_provider,
+        )
+
+        self.assertEqual(processed, 1)
+        winner = store.data["winners"][0]
+        self.assertEqual(winner["status"], "choice_required")
+        self.assertEqual(winner["giftOptions"][0]["id"], 60048)
+        self.assertNotIn("orderId", winner)
+        self.assertNotIn("encryptedGift", winner)
 
     async def test_dry_run_never_calls_gift_provider(self) -> None:
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)

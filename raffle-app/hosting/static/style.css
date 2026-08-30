@@ -35,6 +35,19 @@ select.country, input.nick-input { width: 100%; padding: 14px; border-radius: 12
 .win h2 { color: var(--gold); font-size: 24px; }
 .lose h2 { color: var(--muted); font-size: 20px; }
 .gift-note { color: var(--muted); font-size: 13px; margin-top: 12px; line-height: 1.5; }
+#gift-picker { margin-top: 16px; }
+.gift-options { display: grid; gap: 10px; margin-bottom: 12px; }
+.gift-option {
+  width: 100%; display: flex; align-items: center; gap: 12px; text-align: left;
+  padding: 10px; border: 2px solid #33334a; border-radius: 13px;
+  background: var(--card2); color: var(--text); cursor: pointer;
+}
+.gift-option.selected { border-color: var(--accent); background: #12352d; }
+.gift-option img { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; background: #fff; }
+.gift-option span { min-width: 0; display: grid; gap: 4px; }
+.gift-option strong { font-size: 14px; line-height: 1.25; }
+.gift-option small { color: var(--gold); font-size: 12px; }
+#gift-approve:disabled { opacity: .45; cursor: not-allowed; }
 .error-box { background:#3b0d1a; color:var(--danger); border-radius:10px; padding:10px; font-size:13px; margin-bottom:14px; }
 
 /* ---------- overlay (OBS) ---------- */
