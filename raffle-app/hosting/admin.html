@@ -16,7 +16,7 @@
     공개 도메인: <span class="badge ok">hackathon-korean.web.app</span>
     &nbsp; 실시간: <span class="badge ok">Firestore</span>
     &nbsp; Twitch: <span id="twitch-badge" class="badge dim">미설정</span>
-    &nbsp; SodaGift: <span class="badge ok">LINK 주문</span>
+    &nbsp; SodaGift: <span id="soda-badge" class="badge dim">미연결</span>
   </div>
 
   <div class="controls">
@@ -43,8 +43,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js?v=7"></script>
-<script src="/js/event.js?v=7"></script>
+<script src="/js/firebase-config.js?v=8"></script>
+<script src="/js/event.js?v=8"></script>
 <script>
 const token = new URLSearchParams(location.search).get("token");
 if (token !== window.STREAMDROP_ADMIN_TOKEN) {
@@ -98,7 +98,10 @@ document.getElementById("btn-start").onclick = async () => {
 
 async function orderSodaGift(winner, eventId) {
   const refId = `sd${eventId || ""}${winner.uid}`.replace(/[^a-zA-Z0-9]/g, "").slice(0, 100);
-  const giftApi = window.STREAMDROP_GIFT_API || "/api/gift";
+  const giftApi = (window.STREAMDROP_GIFT_API || "").trim();
+  if (!giftApi) {
+    throw new Error("Cloudflare Worker URL is empty. Set STREAMDROP_GIFT_API.");
+  }
   const res = await fetch(giftApi, {
     method: "POST",
     headers: {
@@ -117,6 +120,10 @@ async function orderSodaGift(winner, eventId) {
 }
 
 document.getElementById("btn-draw").onclick = async () => {
+  if (!(window.STREAMDROP_GIFT_API || "").trim()) {
+    alert("SodaGift Worker가 아직 연결되지 않았습니다.\nCloudflare에서 Worker를 배포한 뒤 workers.dev URL을 넣어 주세요.");
+    return;
+  }
   const snap = await sdEventRef().get();
   const data = snap.data() || sdEmptyEvent();
   if (data.status !== "open") { alert("이벤트가 열린 상태에서만 추첨할 수 있습니다."); return; }
@@ -145,7 +152,8 @@ document.getElementById("btn-draw").onclick = async () => {
     } catch (err) {
       console.error(err);
       w.status = "failed";
-      w.productName = "주문 실패";
+      w.productName = err.message || "주문 실패";
+      alert("SodaGift 주문 실패: " + (err.message || err));
     }
     await sdEventRef().set({ winners, updatedAt: Date.now() }, { merge: true });
   }
@@ -161,6 +169,14 @@ if (token === window.STREAMDROP_ADMIN_TOKEN) {
   if (window.STREAMDROP_TWITCH_CLIENT_ID) {
     twitchBadge.textContent = "로그인 연결됨";
     twitchBadge.className = "badge ok";
+  }
+  const sodaBadge = document.getElementById("soda-badge");
+  if ((window.STREAMDROP_GIFT_API || "").trim()) {
+    sodaBadge.textContent = "Worker 연결됨";
+    sodaBadge.className = "badge ok";
+  } else {
+    sodaBadge.textContent = "미연결";
+    sodaBadge.className = "badge err";
   }
   sdEnsureEvent().then(() => sdListenEvent(render));
 }
