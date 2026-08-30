@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>선물 수령 — StreamDrop</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="claim-wrap">
+  <div class="gift">🎁</div>
+  <h1>Gift Card</h1>
+  <p>데모용 수령 페이지입니다.<br>실제 서비스에서는 SodaGift 수령 화면이 열립니다.</p>
+  <p id="claim-id" style="margin-top:20px;font-size:12px;color:#555"></p>
+</div>
+<script>
+document.getElementById("claim-id").textContent =
+  "claim id: " + (new URLSearchParams(location.search).get("id") || "-");
+</script>
+</body>
+</html>

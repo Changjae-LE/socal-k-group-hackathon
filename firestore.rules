@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Hackathon demo: phones, OBS, and admin share one live event document.
+    match /events/{eventId} {
+      allow read, write: if true;
+    }
+  }
+}

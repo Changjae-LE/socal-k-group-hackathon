@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>StreamDrop Overlay</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="ov" id="main-stage">
+  <div class="qr-card">
+    <div id="qr-box"></div>
+    <div class="scan">📱 QR 스캔하고 참여!</div>
+  </div>
+  <div class="panel">
+    <div class="brand">Stream<span>Drop</span></div>
+    <div class="tagline">실시간 글로벌 기프트 추첨</div>
+    <div id="live-block" class="hidden">
+      <div class="count-label">현재 참여자</div>
+      <div class="count" id="count">0</div>
+    </div>
+    <div id="idle-block" class="idle-note">이벤트가 곧 시작됩니다 ✨</div>
+  </div>
+</div>
+
+<div class="ov winners-stage hidden" id="winners-stage">
+  <h1>🎉 <span>WINNERS</span> 🎉</h1>
+  <div class="winner-grid" id="winner-grid"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="/js/firebase-config.js"></script>
+<script src="/js/event.js"></script>
+<script>
+const countEl = document.getElementById("count");
+const joinUrl = `${location.origin}/join`;
+new QRCode(document.getElementById("qr-box"), {
+  text: joinUrl,
+  width: 300,
+  height: 300,
+  colorDark: "#141326",
+  colorLight: "#ffffff",
+  correctLevel: QRCode.CorrectLevel.H,
+});
+
+function setCount(n) {
+  const from = parseInt(countEl.textContent) || 0;
+  if (n === from) { countEl.textContent = n; return; }
+  const start = performance.now(), dur = 400;
+  (function tick(t) {
+    const p = Math.min(1, (t - start) / dur);
+    countEl.textContent = Math.round(from + (n - from) * p);
+    if (p < 1) requestAnimationFrame(tick);
+  })(start);
+}
+
+function showWinners(winners) {
+  document.getElementById("main-stage").classList.add("hidden");
+  const stage = document.getElementById("winners-stage");
+  const grid = document.getElementById("winner-grid");
+  grid.innerHTML = "";
+  stage.classList.remove("hidden");
+  winners.forEach((w, i) => {
+    const chip = document.createElement("div");
+    chip.className = "winner-chip";
+    chip.style.animationDelay = `${i * 0.25}s`;
+    chip.textContent = `${w.nickname} · ${w.country}`;
+    grid.appendChild(chip);
+  });
+}
+
+function resetStage() {
+  document.getElementById("winners-stage").classList.add("hidden");
+  document.getElementById("main-stage").classList.remove("hidden");
+  countEl.textContent = "0";
+  document.getElementById("live-block").classList.add("hidden");
+  document.getElementById("idle-block").classList.remove("hidden");
+}
+
+sdEnsureEvent().then(() => {
+  sdListenEvent((data) => {
+    if (data.status === "idle") {
+      resetStage();
+      return;
+    }
+    const count = Object.keys(data.participants || {}).length;
+    setCount(count);
+    if (data.status === "open") {
+      document.getElementById("winners-stage").classList.add("hidden");
+      document.getElementById("main-stage").classList.remove("hidden");
+      document.getElementById("idle-block").classList.add("hidden");
+      document.getElementById("live-block").classList.remove("hidden");
+    }
+    if (data.status === "drawn") showWinners(data.winners || []);
+  });
+});
+</script>
+</body>
+</html>

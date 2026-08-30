@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StreamDrop Admin</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="gate" class="ad hidden">
+  <h1>forbidden: /admin?token=&lt;ADMIN_TOKEN&gt;</h1>
+</div>
+<div class="ad hidden" id="console">
+  <h1>Stream<span>Drop</span> 운영자 콘솔</h1>
+  <div class="env">
+    SodaGift: <span class="badge warn">MOCK 모드</span>
+    &nbsp; 실시간: <span class="badge ok">Firestore</span>
+  </div>
+
+  <div class="controls">
+    <button id="btn-start">▶ 이벤트 시작</button>
+    <input id="draw-count" type="number" value="3" min="1">
+    <button id="btn-draw">🎲 추첨</button>
+    <button id="btn-reset">초기화</button>
+    <div class="status-line">상태: <span id="status" class="badge dim">-</span> · 참여 <b id="p-count">0</b>명</div>
+  </div>
+
+  <section>
+    <h2>참가자</h2>
+    <div class="chips" id="participants"><span style="color:var(--muted)">아직 없음</span></div>
+  </section>
+
+  <section>
+    <h2>당첨자 / 지급 현황</h2>
+    <table>
+      <thead><tr><th>닉네임</th><th>국가</th><th>상품</th><th>주문</th><th>링크</th><th>귓속말</th></tr></thead>
+      <tbody id="winners"><tr><td colspan="6" style="color:var(--muted)">추첨 전</td></tr></tbody>
+    </table>
+  </section>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
+<script src="/js/firebase-config.js"></script>
+<script src="/js/event.js"></script>
+<script>
+const token = new URLSearchParams(location.search).get("token");
+if (token !== window.STREAMDROP_ADMIN_TOKEN) {
+  document.getElementById("gate").classList.remove("hidden");
+} else {
+  document.getElementById("console").classList.remove("hidden");
+}
+
+const STATUS_LABEL = { idle: ["대기", "dim"], open: ["접수중", "ok"], drawn: ["추첨완료", "warn"] };
+const W_STATUS = { pending: ["대기", "dim"], ordering: ["주문중…", "warn"], link_ready: ["✅ 발급됨", "ok"], failed: ["❌ 실패", "err"] };
+const WH_STATUS = { skipped: ["—", "dim"], sending: ["발송중…", "warn"], sent: ["✅ 전송됨", "ok"], failed: ["❌ 실패", "err"] };
+
+function badge(map, key) {
+  const [label, cls] = map[key] || [key, "dim"];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function sample(list, n) {
+  const copy = list.slice();
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, Math.max(1, Math.min(n, copy.length)));
+}
+
+function render(data) {
+  const st = document.getElementById("status");
+  const [label, cls] = STATUS_LABEL[data.status] || [data.status, "dim"];
+  st.textContent = label; st.className = `badge ${cls}`;
+  const people = sdParticipantList(data);
+  document.getElementById("p-count").textContent = people.length;
+  document.getElementById("participants").innerHTML = people.length
+    ? people.map((p) => `<span class="chip">${p.nickname} · ${p.country}</span>`).join("")
+    : '<span style="color:var(--muted)">아직 없음</span>';
+  const winners = data.winners || [];
+  document.getElementById("winners").innerHTML = winners.length
+    ? winners.map((w) => `<tr>
+        <td><b>${w.nickname}</b></td><td>${w.country}</td>
+        <td>${w.productName || "-"}</td><td>${w.orderId || "-"}</td>
+        <td>${badge(W_STATUS, w.status)}</td>
+        <td>${badge(WH_STATUS, w.whisperStatus || "skipped")}</td>
+      </tr>`).join("")
+    : '<tr><td colspan="6" style="color:var(--muted)">추첨 전</td></tr>';
+}
+
+document.getElementById("btn-start").onclick = async () => {
+  await sdEventRef().set({ status: "open", winners: [], updatedAt: Date.now() }, { merge: true });
+};
+
+document.getElementById("btn-draw").onclick = async () => {
+  const snap = await sdEventRef().get();
+  const data = snap.data() || sdEmptyEvent();
+  if (data.status !== "open") { alert("이벤트가 열린 상태에서만 추첨할 수 있습니다."); return; }
+  const people = sdParticipantList(data);
+  if (!people.length) { alert("참가자가 없습니다."); return; }
+  const count = parseInt(document.getElementById("draw-count").value, 10) || 1;
+  const picked = sample(people, count);
+  const winners = picked.map((p) => ({
+    uid: p.uid,
+    nickname: p.nickname,
+    country: p.country,
+    productName: "StreamDrop Gift Card",
+    giftLink: `${location.origin}/claim?id=${p.uid}`,
+    orderId: `mock${p.uid.slice(-6)}`,
+    status: "link_ready",
+    whisperStatus: "skipped",
+  }));
+  await sdEventRef().set({ status: "drawn", winners, updatedAt: Date.now() }, { merge: true });
+};
+
+document.getElementById("btn-reset").onclick = async () => {
+  if (!confirm("정말 초기화할까요?")) return;
+  await sdEventRef().set(sdEmptyEvent());
+};
+
+if (token === window.STREAMDROP_ADMIN_TOKEN) {
+  sdEnsureEvent().then(() => sdListenEvent(render));
+}
+</script>
+</body>
+</html>

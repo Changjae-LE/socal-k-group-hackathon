@@ -3,6 +3,21 @@
 라이브 방송(Twitch) 시청자 대상 실시간 글로벌 기프트 추첨 MVP.
 QR 스캔 → Twitch 로그인 참여 → 추첨 → 당첨자 폰 + Twitch 귓속말로 SodaGift 수령 링크 즉시 지급.
 
+## 공개 Hosting (Firebase, 무료)
+
+`raffle-app/hosting`을 `hackathon-korean` Firebase Hosting에 올립니다. 오버레이·참여·운영 화면이 Firestore로 실시간 동기화됩니다.
+
+- 홈: https://hackathon-korean.web.app
+- 참여: https://hackathon-korean.web.app/join
+- 오버레이: https://hackathon-korean.web.app/overlay
+- 운영자: https://hackathon-korean.web.app/admin?token=streamdrop
+
+```bash
+npx firebase deploy --only hosting,firestore --project hackathon-korean
+```
+
+로컬 Python 서버는 Twitch OAuth·SodaGift API용입니다. 공개 QR 데모는 Hosting URL을 사용하세요.
+
 ## 화면
 | 라우트 | 용도 |
 |---|---|

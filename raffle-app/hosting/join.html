@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>StreamDrop — 참여하기</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="join-wrap">
+  <div class="logo">🎁</div>
+  <h1>Stream<span>Drop</span></h1>
+  <p class="sub">라이브 이벤트에 참여하고 선물을 받아가세요</p>
+  <div id="error-box" class="error-box hidden"></div>
+
+  <div id="sec-login" class="card">
+    <p style="margin-bottom:8px">닉네임만 입력하면 바로 참여할 수 있어요</p>
+    <input id="nick-input" class="nick-input" minlength="2" maxlength="20" placeholder="방송에서 사용할 닉네임" required>
+    <button class="btn twitch" id="btn-login" type="button">이벤트 참여 시작</button>
+  </div>
+
+  <div id="sec-idle" class="card hidden">
+    <div class="pulse"></div>
+    <p><span class="nick" id="idle-nick"></span>님, 환영해요!</p>
+    <p class="gift-note">이벤트가 곧 시작됩니다. 화면을 유지해 주세요.</p>
+  </div>
+
+  <div id="sec-enter" class="card hidden">
+    <p><span class="nick" id="enter-nick"></span>님, 선물을 받을 국가를 선택하세요</p>
+    <select class="country" id="country" required>
+      <option value="" disabled selected>국가 선택</option>
+      <option value="KR">🇰🇷 South Korea</option>
+      <option value="US">🇺🇸 United States</option>
+      <option value="JP">🇯🇵 Japan</option>
+      <option value="CA">🇨🇦 Canada</option>
+      <option value="AU">🇦🇺 Australia</option>
+      <option value="GB">🇬🇧 United Kingdom</option>
+      <option value="FR">🇫🇷 France</option>
+      <option value="SG">🇸🇬 Singapore</option>
+      <option value="HK">🇭🇰 Hong Kong</option>
+      <option value="TW">🇹🇼 Taiwan</option>
+      <option value="PH">🇵🇭 Philippines</option>
+      <option value="TH">🇹🇭 Thailand</option>
+      <option value="VN">🇻🇳 Vietnam</option>
+      <option value="MY">🇲🇾 Malaysia</option>
+      <option value="ID">🇮🇩 Indonesia</option>
+      <option value="IN">🇮🇳 India</option>
+      <option value="CN">🇨🇳 China</option>
+    </select>
+    <button class="btn accent" id="btn-enter" type="button">🎉 이벤트 참여하기</button>
+  </div>
+
+  <div id="sec-wait" class="card hidden">
+    <div class="pulse"></div>
+    <h2 style="font-size:20px">참여 완료!</h2>
+    <p style="margin-top:8px"><span class="nick" id="wait-nick"></span> · <span id="wait-country"></span></p>
+    <p class="gift-note">추첨을 기다리는 중이에요. 화면을 닫지 마세요!</p>
+  </div>
+
+  <div id="sec-win" class="card win hidden">
+    <div class="result-emoji">🎉</div>
+    <h2>축하합니다, 당첨!</h2>
+    <p style="margin:10px 0 4px" id="win-product">선물을 준비하고 있어요...</p>
+    <a id="gift-btn" class="btn accent" href="#" target="_blank">🎁 선물 수령하기</a>
+    <p class="gift-note">이 링크는 본인 전용입니다. 절대 공유하지 마세요.</p>
+  </div>
+
+  <div id="sec-lose" class="card lose hidden">
+    <div class="result-emoji">😢</div>
+    <h2>아쉽지만 다음 기회에!</h2>
+    <p class="gift-note">참여해 주셔서 감사합니다.</p>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
+<script src="/js/firebase-config.js"></script>
+<script src="/js/event.js"></script>
+<script>
+const SESSION_KEY = "sd_session";
+const COUNTRIES = { KR:"🇰🇷 South Korea", US:"🇺🇸 United States", JP:"🇯🇵 Japan", CA:"🇨🇦 Canada", AU:"🇦🇺 Australia", GB:"🇬🇧 United Kingdom", FR:"🇫🇷 France", SG:"🇸🇬 Singapore", HK:"🇭🇰 Hong Kong", TW:"🇹🇼 Taiwan", PH:"🇵🇭 Philippines", TH:"🇹🇭 Thailand", VN:"🇻🇳 Vietnam", MY:"🇲🇾 Malaysia", ID:"🇮🇩 Indonesia", IN:"🇮🇳 India", CN:"🇨🇳 China" };
+
+function show(id) {
+  for (const sec of document.querySelectorAll(".card[id^='sec-']")) sec.classList.add("hidden");
+  document.getElementById(id).classList.remove("hidden");
+}
+
+function loadSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); }
+  catch { return null; }
+}
+
+function saveSession(data) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+}
+
+document.getElementById("btn-login").onclick = () => {
+  const nick = document.getElementById("nick-input").value.trim();
+  if (nick.length < 2) {
+    document.getElementById("error-box").textContent = "닉네임을 2자 이상 입력해 주세요.";
+    document.getElementById("error-box").classList.remove("hidden");
+    return;
+  }
+  saveSession({ uid: `p${Date.now().toString(16)}${Math.random().toString(16).slice(2, 6)}`, nick, country: "", eventId: "" });
+  document.getElementById("error-box").classList.add("hidden");
+  renderFromEvent(window.__eventData || sdEmptyEvent());
+};
+
+document.getElementById("btn-enter").onclick = async () => {
+  const country = document.getElementById("country").value;
+  const session = loadSession();
+  if (!country) {
+    document.getElementById("error-box").textContent = "국가를 선택해 주세요.";
+    document.getElementById("error-box").classList.remove("hidden");
+    return;
+  }
+  if (!session) return;
+  const data = window.__eventData;
+  if (!data || data.status !== "open") {
+    document.getElementById("error-box").textContent = "이벤트가 아직 열리지 않았어요. 잠시 후 다시 시도해 주세요.";
+    document.getElementById("error-box").classList.remove("hidden");
+    return;
+  }
+  session.country = country;
+  session.eventId = data.eventId;
+  saveSession(session);
+  await sdEventRef().set({
+    [`participants.${session.uid}`]: {
+      nickname: session.nick,
+      country,
+      joinedAt: Date.now(),
+    },
+    updatedAt: Date.now(),
+  }, { merge: true });
+};
+
+function renderFromEvent(data) {
+  window.__eventData = data;
+  const session = loadSession();
+  if (!session) { show("sec-login"); return; }
+
+  const participant = (data.participants || {})[session.uid];
+  const joined = Boolean(participant) && session.eventId === data.eventId;
+  const winner = (data.winners || []).find((w) => w.uid === session.uid);
+
+  document.getElementById("idle-nick").textContent = session.nick;
+  document.getElementById("enter-nick").textContent = session.nick;
+  document.getElementById("wait-nick").textContent = session.nick;
+  document.getElementById("wait-country").textContent = participant ? (COUNTRIES[participant.country] || participant.country) : "";
+
+  if (data.status === "drawn" && joined) {
+    if (winner) {
+      document.getElementById("win-product").textContent = winner.productName || "StreamDrop Gift Card";
+      document.getElementById("gift-btn").href = winner.giftLink || `/claim?id=${session.uid}`;
+      show("sec-win");
+    } else {
+      show("sec-lose");
+    }
+    return;
+  }
+  if (joined && data.status === "open") { show("sec-wait"); return; }
+  if (data.status === "open") { show("sec-enter"); return; }
+  show("sec-idle");
+}
+
+sdEnsureEvent().then(() => sdListenEvent(renderFromEvent));
+</script>
+</body>
+</html>
