@@ -19,7 +19,13 @@ TWITCH_BOT_USER_ID = os.getenv("TWITCH_BOT_USER_ID", "")
 TWITCH_BOT_TOKEN = os.getenv("TWITCH_BOT_TOKEN", "")
 
 SODAGIFT_API_KEY = os.getenv("SODAGIFT_API_KEY", "")
-SODAGIFT_BASE_URL = os.getenv("SODAGIFT_BASE_URL", "https://biz-sandbox-api.sodagift.com").rstrip("/")
+_soda_raw = os.getenv("SODAGIFT_BASE_URL", "https://biz-sandbox-api.sodagift.com").rstrip("/")
+# Docs first-call URL is /v1/accounts/balance. If that full path is pasted, keep the API host.
+if "/v1/" in _soda_raw:
+    SODAGIFT_BASE_URL = _soda_raw.split("/v1/")[0].rstrip("/")
+else:
+    SODAGIFT_BASE_URL = _soda_raw
+SODAGIFT_BALANCE_PATH = "/v1/accounts/balance"
 GIFT_SENDER_NAME = os.getenv("GIFT_SENDER_NAME", "StreamDrop")
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "streamdrop")
