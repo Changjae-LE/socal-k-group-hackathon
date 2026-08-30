@@ -50,7 +50,7 @@ function sdParticipantList(data) {
 }
 
 function sdJoinedList(data) {
-  return sdParticipantList(data).filter((p) => p.country);
+  return sdParticipantList(data).filter((p) => p.country && p.claimPublicKey);
 }
 
 async function sdWriteParticipant(uid, fields) {
