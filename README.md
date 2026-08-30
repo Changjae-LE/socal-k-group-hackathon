@@ -4,7 +4,8 @@
 
 StreamDrop은 Twitch 방송의 QR 참여, 실시간 추첨, 당첨자 승인, 국가별 SodaGift LINK 수령을 하나의 흐름으로 연결한 해커톤 MVP입니다. 운영자는 OBS와 운영자 화면에서 이벤트를 진행하고, 참가자는 Twitch 계정으로 참여해 자신의 휴대폰에서 결과와 선물 수령 절차를 확인합니다.
 
-- 발표 자료: [StreamDrop Twitch 해커톤 기획안 v3](Demo/Presentation/StreamDrop_Twitch_%ED%95%B4%EC%BB%A4%ED%86%A4_%EA%B8%B0%ED%9A%8D%EC%95%88_v3.pptx)
+- 발표 자료(4분 발표 + 6분 데모): [StreamDrop Twitch 해커톤 기획안 v4](Demo/Presentation/StreamDrop_Twitch_%ED%95%B4%EC%BB%A4%ED%86%A4_%EA%B8%B0%ED%9A%8D%EC%95%88_v4.pptx)
+- 상세 기획안: [StreamDrop Twitch 해커톤 기획안 v3](Demo/Presentation/StreamDrop_Twitch_%ED%95%B4%EC%BB%A4%ED%86%A4_%EA%B8%B0%ED%9A%8D%EC%95%88_v3.pptx)
 - 최종 데모: [raffle-app](raffle-app)
 - 초기 OBS 프로토타입: [streamdrop-app](streamdrop-app)
 - 공개 데모: [홈](https://hackathon-korean-team5.web.app) · [참여](https://hackathon-korean-team5.web.app/join) · [오버레이](https://hackathon-korean-team5.web.app/overlay) · [운영자](https://hackathon-korean-team5.web.app/admin?token=streamdrop)
@@ -12,24 +13,20 @@ StreamDrop은 Twitch 방송의 QR 참여, 실시간 추첨, 당첨자 승인, �
 
 ## Team 5
 
-| 멤버 | 소개 |
-|---|---|
-| Dexter Kim | 식사와 응원을 맡은 팀의 에너지 |
-| Christian Lee | 개성 넘치는 멋쟁이 |
-| 이창재 | 얼굴을 담당하고 있는 팀의 비주얼 |
-| 최재원 | 5팀의 브레인 |
+- Dexter Kim
+- Christian Lee
+- 이창재
+- 최재원
 
 ## 1. 아이디어 채택
 
 ### 채택 방법
 
-하루 안에 실제 동작하는 결과를 만들기 위해 후보 아이디어를 다음 기준으로 비교했습니다.
+팀 회의에서 후보 아이디어를 비교한 뒤, 다음 질문을 중심으로 StreamDrop을 선택했습니다.
 
-1. **문제 크기:** 글로벌 팬이 실제로 겪는 지급 문제인가?
-2. **구현 가능성:** 4명이 하루 안에 핵심 흐름을 시연할 수 있는가?
-3. **API 적합성:** SodaGift LINK 방식의 강점을 분명하게 보여주는가?
-4. **관심도:** 현장에서 누구나 참여하고 결과를 바로 이해할 수 있는가?
-5. **수익 확장성:** 반복 캠페인과 경품 주문으로 이어질 수 있는가?
+- 글로벌 라이브 이벤트의 국가별 선물 지급 문제를 해결하는가?
+- 4명이 하루 안에 핵심 사용자 흐름을 실제로 시연할 수 있는가?
+- SodaGift LINK의 국가별 상품 선택 경험과 사업 확장성을 효과적으로 보여주는가?
 
 ### 채택 배경
 
@@ -45,13 +42,15 @@ flowchart LR
     A[운영자가 이벤트 시작] --> B[OBS에 참여 QR 노출]
     B --> C[Twitch 로그인]
     C --> D[국가 선택 후 참여]
-    D --> E[운영자가 추첨]
-    E --> F[당첨 화면과 선물 받기 버튼]
-    F --> G[당첨자가 버튼 클릭]
-    G --> H[국가에 맞는 SodaGift LINK URL 생성]
-    H --> I[Twitch 귓속말 전달 요청]
-    I --> J[SodaGift 사이트에서 상품 선택]
-    J --> K[주문 완료]
+    D --> E[Firestore에 참여 상태 반영]
+    E --> F[운영자가 참가자 확인]
+    F --> G[운영자가 추첨]
+    G --> H[OBS와 휴대폰에 당첨 결과 표시]
+    H --> I[당첨자가 선물 받기 선택]
+    I --> J[국가에 맞는 SodaGift LINK URL 생성]
+    J --> K[Twitch 귓속말 전달 요청]
+    K --> L[SodaGift 사이트에서 상품 선택]
+    L --> M[주문 완료]
 ```
 
 핵심 원칙은 **당첨자가 “선물 받기”를 눌러 승인한 뒤에만 수령 LINK를 생성한다**는 것입니다.
@@ -111,15 +110,16 @@ Local Gift Bridge
 
 ## 5. 데모 진행 순서
 
-1. 로컬 지급 브리지를 실행합니다.
-2. Twitch 방송과 OBS 오버레이를 보여줍니다.
-3. 운영자가 **이벤트 시작**을 누르면 QR이 활성화됩니다.
-4. 참가자는 QR을 스캔하고 Twitch 로그인 → 국가 선택 → 참여를 완료합니다.
-5. 운영자가 **추첨하기**를 누르면 OBS와 참가자 화면에 결과가 표시됩니다.
-6. 당첨자의 화면에는 결과와 **선물 받기** 버튼이 함께 나타납니다.
-7. 당첨자가 버튼을 누르면 SodaGift LINK URL이 생성됩니다.
-8. Twitch API가 해당 URL의 귓속말 전달을 요청합니다.
-9. 당첨자는 SodaGift 사이트에서 상품을 선택한 뒤 주문을 완료합니다.
+| 단계 | 진행 주체 | 화면과 동작 |
+|---|---|---|
+| 1. 이벤트 시작 | 운영자 | 운영자 콘솔에서 이벤트를 시작하면 OBS 오버레이에 참여 QR이 표시됩니다. |
+| 2. 참여 등록 | 참가자 | QR을 스캔하고 Twitch OAuth 로그인 → 국가 선택 → 참여를 완료합니다. |
+| 3. 참가 확인 | 참가자 → 운영자 | 참여 상태가 Firestore에 반영되고 운영자 콘솔에 Twitch 계정과 국가가 표시됩니다. |
+| 4. 추첨·발표 | 운영자 → 참가자 | 운영자가 추첨하면 OBS에 당첨자가 발표되고 참가자 휴대폰에 결과가 표시됩니다. |
+| 5. 선물 받기 | 당첨자 | **선물 받기**를 누르면 국가에 맞는 SodaGift LINK가 생성되고 Twitch 귓속말 전달이 요청됩니다. |
+| 6. 상품 선택·주문 | 당첨자 | SodaGift 사이트에서 원하는 상품을 선택하고 주문을 완료합니다. |
+
+데모 시작 전에는 로컬 지급 브리지를 실행하고 Twitch 방송·OBS Browser Source·운영자 콘솔을 준비합니다.
 
 **완료 기준:** Twitch 로그인 → 국가 선택 → 추첨 → 당첨자 승인 → 실제 SodaGift URL 생성 → 수령 사이트 진입.
 
