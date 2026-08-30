@@ -86,8 +86,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js?v=7"></script>
-<script src="/js/event.js?v=7"></script>
+<script src="/js/firebase-config.js?v=12"></script>
+<script src="/js/event.js?v=12"></script>
 <script>
 // 로컬/통합 테스트용: ?edoc=events/test-recs 로 별도 이벤트 문서 사용
 {
@@ -95,7 +95,74 @@
   if (edoc && /^events\/[\w-]+$/.test(edoc)) window.STREAMDROP_EVENT_DOC = edoc;
 }
 const SESSION_KEY = "sd_session";
+const CLAIM_KEY_STORAGE = "sd_claim_keys";
 const COUNTRIES = { KR:"🇰🇷 South Korea", US:"🇺🇸 United States", JP:"🇯🇵 Japan", CA:"🇨🇦 Canada", AU:"🇦🇺 Australia", GB:"🇬🇧 United Kingdom", FR:"🇫🇷 France", SG:"🇸🇬 Singapore", HK:"🇭🇰 Hong Kong", TW:"🇹🇼 Taiwan", PH:"🇵🇭 Philippines", TH:"🇹🇭 Thailand", VN:"🇻🇳 Vietnam", MY:"🇲🇾 Malaysia", ID:"🇮🇩 Indonesia", IN:"🇮🇳 India", CN:"🇨🇳 China" };
+
+function claimKeyStorageId(uid) {
+  return CLAIM_KEY_STORAGE + ":" + uid;
+}
+
+function bytesFromBase64Url(value) {
+  const base64 = String(value || "").replace(/-/g, "+").replace(/_/g, "/") + "===".slice((String(value || "").length + 3) % 4);
+  return Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+}
+
+async function ensureClaimKeys(session) {
+  if (!session || !session.uid) throw new Error("수령 키를 만들 참가자 정보가 없습니다.");
+  if (session.claimPublicKey && session.claimPrivateKey) return session;
+  try {
+    const saved = JSON.parse(localStorage.getItem(claimKeyStorageId(session.uid)) || "null");
+    if (saved?.publicKey && saved?.privateKey) {
+      session.claimPublicKey = saved.publicKey;
+      session.claimPrivateKey = saved.privateKey;
+      saveSession(session);
+      return session;
+    }
+  } catch {
+    localStorage.removeItem(claimKeyStorageId(session.uid));
+  }
+  if (!window.crypto?.subtle) {
+    throw new Error("이 브라우저는 수령 키를 만들 수 없습니다. HTTPS에서 다시 열어 주세요.");
+  }
+  const pair = await crypto.subtle.generateKey({
+    name: "RSA-OAEP",
+    modulusLength: 2048,
+    publicExponent: new Uint8Array([1, 0, 1]),
+    hash: "SHA-256",
+  }, true, ["encrypt", "decrypt"]);
+  const keys = {
+    publicKey: await crypto.subtle.exportKey("jwk", pair.publicKey),
+    privateKey: await crypto.subtle.exportKey("jwk", pair.privateKey),
+  };
+  session.claimPublicKey = keys.publicKey;
+  session.claimPrivateKey = keys.privateKey;
+  localStorage.setItem(claimKeyStorageId(session.uid), JSON.stringify(keys));
+  saveSession(session);
+  return session;
+}
+
+async function decryptGiftLink(session, encrypted) {
+  const privateJwk = session && session.claimPrivateKey;
+  if (!privateJwk) throw new Error("이 기기에 수령 키가 없습니다. 참여했던 휴대폰에서 열어 주세요.");
+  const privateKey = await crypto.subtle.importKey(
+    "jwk", privateJwk,
+    { name: "RSA-OAEP", hash: "SHA-256" }, false, ["decrypt"],
+  );
+  const rawKey = await crypto.subtle.decrypt(
+    { name: "RSA-OAEP" }, privateKey, bytesFromBase64Url(encrypted.wrappedKey),
+  );
+  const aesKey = await crypto.subtle.importKey("raw", rawKey, "AES-GCM", false, ["decrypt"]);
+  const clear = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: bytesFromBase64Url(encrypted.iv) },
+    aesKey, bytesFromBase64Url(encrypted.ciphertext),
+  );
+  const parsed = new URL(new TextDecoder().decode(clear));
+  const host = parsed.hostname.toLowerCase();
+  if (parsed.protocol !== "https:" || !(host === "sodagift.com" || host.endsWith(".sodagift.com"))) {
+    throw new Error("SodaGift URL이 아닙니다.");
+  }
+  return parsed.href;
+}
 
 function showError(msg) {
   const box = document.getElementById("error-box");
