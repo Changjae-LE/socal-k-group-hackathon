@@ -77,8 +77,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js?v=4"></script>
-<script src="/js/event.js?v=4"></script>
+<script src="/js/firebase-config.js?v=6"></script>
+<script src="/js/event.js?v=6"></script>
 <script>
 const SESSION_KEY = "sd_session";
 const COUNTRIES = { KR:"🇰🇷 South Korea", US:"🇺🇸 United States", JP:"🇯🇵 Japan", CA:"🇨🇦 Canada", AU:"🇦🇺 Australia", GB:"🇬🇧 United Kingdom", FR:"🇫🇷 France", SG:"🇸🇬 Singapore", HK:"🇭🇰 Hong Kong", TW:"🇹🇼 Taiwan", PH:"🇵🇭 Philippines", TH:"🇹🇭 Thailand", VN:"🇻🇳 Vietnam", MY:"🇲🇾 Malaysia", ID:"🇮🇩 Indonesia", IN:"🇮🇳 India", CN:"🇨🇳 China" };
@@ -246,8 +246,16 @@ function renderFromEvent(data) {
 
   if (data.status === "drawn" && (joined || waiting || winner)) {
     if (winner) {
-      document.getElementById("win-product").textContent = winner.productName || "StreamDrop Gift Card";
-      document.getElementById("gift-btn").href = winner.giftLink || `${sdPublicUrl()}/claim?id=${session.uid}`;
+      document.getElementById("win-product").textContent = winner.productName
+        || (winner.status === "ordering" ? "SodaGift 링크를 발급하는 중..." : "StreamDrop Gift Card");
+      const giftBtn = document.getElementById("gift-btn");
+      if (winner.giftLink && /^https?:\/\//.test(winner.giftLink)) {
+        giftBtn.href = winner.giftLink;
+        giftBtn.classList.remove("hidden");
+      } else {
+        giftBtn.href = "#";
+        giftBtn.classList.add("hidden");
+      }
       show("sec-win");
     } else if (joined) {
       show("sec-lose");

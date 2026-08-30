@@ -16,6 +16,7 @@
     공개 도메인: <span class="badge ok">hackathon-korean.web.app</span>
     &nbsp; 실시간: <span class="badge ok">Firestore</span>
     &nbsp; Twitch: <span id="twitch-badge" class="badge dim">미설정</span>
+    &nbsp; SodaGift: <span class="badge ok">LINK 주문</span>
   </div>
 
   <div class="controls">
@@ -42,8 +43,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js?v=4"></script>
-<script src="/js/event.js?v=4"></script>
+<script src="/js/firebase-config.js?v=6"></script>
+<script src="/js/event.js?v=6"></script>
 <script>
 const token = new URLSearchParams(location.search).get("token");
 if (token !== window.STREAMDROP_ADMIN_TOKEN) {
@@ -95,6 +96,25 @@ document.getElementById("btn-start").onclick = async () => {
   await sdEventRef().set({ status: "open", winners: [], updatedAt: Date.now() }, { merge: true });
 };
 
+async function orderSodaGift(winner, eventId) {
+  const refId = `sd${eventId || ""}${winner.uid}`.replace(/[^a-zA-Z0-9]/g, "").slice(0, 100);
+  const res = await fetch("/api/gift", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-admin-token": window.STREAMDROP_ADMIN_TOKEN,
+    },
+    body: JSON.stringify({
+      nickname: winner.nickname,
+      country: winner.country,
+      refId,
+    }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `gift ${res.status}`);
+  return body;
+}
+
 document.getElementById("btn-draw").onclick = async () => {
   const snap = await sdEventRef().get();
   const data = snap.data() || sdEmptyEvent();
@@ -107,13 +127,27 @@ document.getElementById("btn-draw").onclick = async () => {
     uid: p.uid,
     nickname: p.nickname,
     country: p.country,
-    productName: "StreamDrop Gift Card",
-    giftLink: `${sdPublicUrl()}/claim?id=${p.uid}`,
-    orderId: `mock${p.uid.slice(-6)}`,
-    status: "link_ready",
+    productName: "SodaGift 준비중",
+    giftLink: "",
+    orderId: "",
+    status: "ordering",
     whisperStatus: "skipped",
   }));
   await sdEventRef().set({ status: "drawn", winners, updatedAt: Date.now() }, { merge: true });
+  for (const w of winners) {
+    try {
+      const gift = await orderSodaGift(w, data.eventId);
+      w.productName = gift.productName || "SodaGift";
+      w.giftLink = gift.link || "";
+      w.orderId = gift.orderId || "";
+      w.status = w.giftLink ? "link_ready" : "failed";
+    } catch (err) {
+      console.error(err);
+      w.status = "failed";
+      w.productName = "주문 실패";
+    }
+    await sdEventRef().set({ winners, updatedAt: Date.now() }, { merge: true });
+  }
 };
 
 document.getElementById("btn-reset").onclick = async () => {

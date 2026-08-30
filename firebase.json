@@ -1,4 +1,10 @@
 {
+  "functions": {
+    "source": "functions",
+    "predeploy": [
+      "node functions/write-secrets.js"
+    ]
+  },
   "hosting": {
     "public": "raffle-app/hosting",
     "cleanUrls": true,
@@ -11,6 +17,10 @@
       {
         "source": "/join/callback",
         "destination": "/join.html"
+      },
+      {
+        "source": "/api/gift",
+        "function": "createGift"
       }
     ],
     "headers": [
