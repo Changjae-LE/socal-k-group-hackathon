@@ -320,28 +320,36 @@ function randomOAuthValue() {
 
 if (window.STREAMDROP_TWITCH_CLIENT_ID) {
   const btn = document.getElementById("btn-twitch");
-  let oauthState = localStorage.getItem(TWITCH_STATE_KEY);
-  if (!oauthState) {
-    oauthState = randomOAuthValue();
-    localStorage.setItem(TWITCH_STATE_KEY, oauthState);
-  }
-  const twitchAuth = "https://id.twitch.tv/oauth2/authorize?" + new URLSearchParams({
-    client_id: window.STREAMDROP_TWITCH_CLIENT_ID,
-    redirect_uri: window.STREAMDROP_TWITCH_REDIRECT_URI,
-    response_type: "token",
-    scope: "user:read:email",
-    state: oauthState,
-    force_verify: "true",
-  });
-  btn.href = twitchAuth;
   btn.classList.remove("hidden");
+  btn.onclick = (event) => {
+    event.preventDefault();
+    const oauthState = randomOAuthValue();
+    localStorage.setItem(TWITCH_STATE_KEY, oauthState);
+    const twitchAuth = "https://id.twitch.tv/oauth2/authorize?" + new URLSearchParams({
+      client_id: window.STREAMDROP_TWITCH_CLIENT_ID,
+      redirect_uri: window.STREAMDROP_TWITCH_REDIRECT_URI,
+      response_type: "token",
+      scope: "user:read:email",
+      state: oauthState,
+    });
+    location.assign(twitchAuth);
+  };
 }
 
 async function consumeTwitchHash() {
   const query = new URLSearchParams(location.search);
   if (query.get("error")) {
+    const code = query.get("error") || "oauth_error";
+    const description = query.get("error_description") || "";
     history.replaceState(null, "", location.pathname);
-    throw new Error("Twitch 로그인이 취소되었거나 승인되지 않았습니다.");
+    localStorage.removeItem(TWITCH_STATE_KEY);
+    if (code === "access_denied") {
+      throw new Error("Twitch 승인이 취소되었습니다. 다시 로그인하고 Authorize를 선택해 주세요.");
+    }
+    if (/redirect|uri/i.test(code + " " + description)) {
+      throw new Error("Twitch Redirect URL 설정이 일치하지 않습니다: https://hackathon-korean-team5.web.app/join");
+    }
+    throw new Error("Twitch 로그인 실패 (" + code + "): " + (description || "다시 시도해 주세요."));
   }
 
   const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
