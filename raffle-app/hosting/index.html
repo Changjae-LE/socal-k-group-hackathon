@@ -17,5 +17,16 @@
     <a class="btn" style="background:#33334a" href="/admin?token=streamdrop">🛠 운영자 콘솔</a>
   </div>
 </div>
+<script>
+// Twitch OAuth가 루트로 돌아와도 토큰을 잃지 않고 참여 화면에서 처리한다.
+const oauthQuery = new URLSearchParams(location.search);
+if (
+  location.hash.includes("access_token") ||
+  oauthQuery.has("code") ||
+  oauthQuery.has("error")
+) {
+  location.replace("/join" + location.search + location.hash);
+}
+</script>
 </body>
 </html>

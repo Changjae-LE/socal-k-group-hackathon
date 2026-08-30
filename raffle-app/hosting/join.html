@@ -352,7 +352,6 @@ async function consumeTwitchHash() {
   if (!expectedState || hash.get("state") !== expectedState) {
     throw new Error("Twitch 로그인 확인값이 일치하지 않습니다. 다시 로그인해 주세요.");
   }
-  history.replaceState(null, "", location.pathname);
   const res = await fetch("https://api.twitch.tv/helix/users", {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -362,6 +361,7 @@ async function consumeTwitchHash() {
   if (!res.ok) throw new Error("Twitch 사용자 정보를 가져오지 못했습니다.");
   const user = (await res.json()).data?.[0];
   if (!user?.id) throw new Error("Twitch 계정 정보를 확인하지 못했습니다.");
+  history.replaceState(null, "", location.pathname);
   localStorage.removeItem(TWITCH_STATE_KEY);
   const session = {
     uid: user.id,
