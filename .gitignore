@@ -1,0 +1,23 @@
+# secrets — never commit
+.env
+.env.*
+!.env.example
+
+# probe / scratch output (may contain catalog data)
+/scratchpad/
+
+# node / next
+/node_modules/
+/.next/
+/out/
+/build/
+next-env.d.ts
+*.tsbuildinfo
+*.log
+
+.env
+.env.local
+.env.*.local
+node_modules/
+.next/
+scratchpad/

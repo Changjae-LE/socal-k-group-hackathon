@@ -1,0 +1,189 @@
+// SodaGift Live — Campaign + Participant + Winner + fulfillment (Reward / ClaimToken /
+// WhisperAttempt). See CLAUDE.md §3 / §9 / §10.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CampaignStatus {
+  DRAFT // being configured — not visible to participants
+  OPEN // participants may join
+  CLOSED // entries closed; no new joins; draw allowed
+  DRAWN // winners persisted; result is final (terminal)
+}
+
+enum DeliveryMethod {
+  EMAIL
+  LINK
+  TEXT
+  CODE
+  DIRECT_SHIPPING
+}
+
+enum RewardSelectionMode {
+  PARTICIPANT_PRECHOICE
+  WINNER_CHOICE
+  BACKEND_SELECT
+}
+
+enum ClaimLinkMode {
+  PROTECTED_TOKEN
+  SODAGIFT_DIRECT
+}
+
+enum RewardStatus {
+  AWAITING_SELECTION // winner verified — must choose a country-specific product
+  ORDER_CREATING // POST /v1/orders in flight (concurrency guard)
+  ORDER_CREATED // SodaGift order created; voucher URL stored (encrypted)
+  FULFILLED // SodaGift order item COMPLETED
+  ORDER_FAILED // retryable failure — winner may retry with the same externalReferenceId
+  UNAVAILABLE // no safe SodaGift ordering contract for this winner's country/policy
+}
+
+enum CustomAmountMode {
+  FORBIDDEN // fixed-price product — item.custom_amount must be OMITTED (verified: #99001)
+  REQUIRED // variable product — item.custom_amount must be SENT (verified: #50005)
+  UNKNOWN
+}
+
+enum WhisperStatus {
+  SENT // Twitch returned HTTP 204 (accepted — NOT proof of delivery)
+  FAILED
+}
+
+/// A GLOBAL giveaway. Country-agnostic: it expresses a reward *policy*, not a product.
+/// The concrete SodaGift product for each winner is resolved later against that winner's
+/// selected country (see CLAUDE.md §3A). No hostId yet — Host OAuth is a later milestone.
+model Campaign {
+  id                     String              @id @default(cuid())
+  publicId               String              @unique
+  hostId                 String? // reserved for Host OAuth milestone
+  name                   String
+  isGlobal               Boolean             @default(true)
+  eligibleCountries      String[]            @default([]) // used only when isGlobal = false
+  requiredDeliveryMethod DeliveryMethod      @default(LINK)
+  allowedProductTypes    String[]            @default([]) // [] = any SodaGift `type`
+  rewardPolicy           Json // { kind: "TARGET_VALUE" | "VALUE_RANGE" | "BUDGET_PER_WINNER", ... }
+  rewardSelectionMode    RewardSelectionMode @default(BACKEND_SELECT)
+  claimLinkMode          ClaimLinkMode       @default(PROTECTED_TOKEN)
+  winnerCount            Int                 @default(1)
+  status                 CampaignStatus      @default(DRAFT)
+  drawnAt                DateTime?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  participants Participant[]
+  winners      Winner[]
+  rewards      Reward[]
+
+  @@index([status])
+}
+
+/// One entry per Twitch account per campaign.
+/// `twitchUserId` is ALWAYS the verified participant OIDC `sub` — never client input.
+/// `countryCode` is user-selected and re-validated server-side against the campaign's
+/// eligible SodaGift countries (CLAUDE.md §3A). No winner/reward data here.
+model Participant {
+  id           String   @id @default(cuid())
+  campaignId   String
+  twitchUserId String // = verified OIDC sub
+  countryCode  String // ISO 3166-1 alpha-2
+  joinedAt     DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  winner   Winner? // set only if this participant was drawn
+
+  @@unique([campaignId, twitchUserId])
+  @@index([campaignId])
+}
+
+/// A drawn winner. Identity is resolved THROUGH the relation:
+/// Winner -> participant -> twitchUserId / countryCode. No twitchUserId column here;
+/// nothing is ever copied from browser input.
+model Winner {
+  id            String   @id @default(cuid())
+  campaignId    String
+  participantId String   @unique // one Winner row per Participant row
+  drawSequence  Int // 1..winnerCount, the order drawn
+  drawnAt       DateTime @default(now())
+
+  campaign    Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  claimToken      ClaimToken?
+  reward          Reward?
+  whisperAttempts WhisperAttempt[]
+
+  @@unique([campaignId, participantId]) // same participant cannot be selected twice for a campaign
+  @@unique([campaignId, drawSequence]) // one winner per slot; stable ordering
+  @@index([campaignId])
+}
+
+/// One live claim link per winner. The Whisper carries `${APP_URL}/claim/<rawToken>`;
+/// only `sha256_hex(rawToken)` is stored. Re-notifying a pending winner ROTATES the token
+/// (upsert by winnerId); a winner already whispered (WhisperAttempt.SENT) is never rotated.
+model ClaimToken {
+  id             String    @id @default(cuid())
+  winnerId       String    @unique
+  tokenHash      String    @unique // sha256_hex(rawToken) — raw is never stored / logged
+  expiresAt      DateTime
+  consumedAt     DateTime? // set when the SodaGift order is created for this winner
+  failedAttempts Int       @default(0) // identity-mismatch opens, for rate limiting
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  winner Winner @relation(fields: [winnerId], references: [id], onDelete: Cascade)
+}
+
+/// The country-resolved SodaGift reward for one winner. Country comes from the winner's
+/// Participant.countryCode (never inferred). The concrete product is chosen by the VERIFIED
+/// winner on /claim/<token> — never a hardcoded / host-entered product id.
+model Reward {
+  id          String @id @default(cuid())
+  winnerId    String @unique
+  campaignId  String
+  countryCode String // copied from Winner.participant.countryCode at creation
+
+  status RewardStatus @default(AWAITING_SELECTION)
+
+  selectedProductId       String? // numeric SodaGift product id (as string) the winner picked
+  selectedProductSnapshot Json? // /v1/products row frozen at selection
+  customAmountMode         CustomAmountMode?
+  rewardAmount             Decimal? @db.Decimal(14, 2) // sent as item.custom_amount iff REQUIRED
+  rewardCurrency           String? // ISO 4217, from the product snapshot (the country's currency)
+  unavailableReason        String? // set when status = UNAVAILABLE
+
+  externalReferenceId String? @unique // frozen at the first order attempt, reused on every retry
+  sodagiftOrderId     String?
+  sodagiftOrderItemId String?
+  sodagiftOrderStatus String?
+  sodagiftItemStatus  String?
+  rewardUrlEnc        String? // AES-256-GCM(order_items[0].delivery.link); never logged
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  winner   Winner   @relation(fields: [winnerId], references: [id], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+}
+
+/// One row per Twitch Whisper POST. Never stores the message body, claim URL, or token.
+model WhisperAttempt {
+  id               String        @id @default(cuid())
+  winnerId         String
+  status           WhisperStatus
+  twitchHttpStatus Int?
+  twitchErrorCode  String? // Twitch error slug only — no message body
+  attemptedAt      DateTime      @default(now())
+
+  winner Winner @relation(fields: [winnerId], references: [id], onDelete: Cascade)
+
+  @@index([winnerId])
+}

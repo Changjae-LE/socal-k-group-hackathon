@@ -1,0 +1,25 @@
+# Local PostgreSQL for development — kept close to the production DB architecture.
+#   docker compose up -d      (start)
+#   docker compose down       (stop, keeps data)
+#   docker compose down -v     (stop, DELETE data)
+services:
+  db:
+    image: postgres:16
+    container_name: sodagift-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sodagift
+      POSTGRES_PASSWORD: sodagift
+      POSTGRES_DB: sodagift
+    ports:
+      - "5432:5432"
+    volumes:
+      - sodagift_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sodagift -d sodagift"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  sodagift_pgdata:
