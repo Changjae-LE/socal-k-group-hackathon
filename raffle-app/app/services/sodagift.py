@@ -190,6 +190,11 @@ async def _fetch_link(order_id: int) -> str:
     raise SodaGiftError(f"link not ready after {LINK_POLL_TIMEOUT}s (order {order_id})")
 
 
+async def get_order_link(order_id: int | str) -> str:
+    """Re-fetch the bearer URL for an existing SodaGift order."""
+    return await _fetch_link(int(order_id))
+
+
 async def get_gift_link(
     nickname: str,
     country: str,

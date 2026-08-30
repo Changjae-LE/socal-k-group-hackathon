@@ -475,8 +475,8 @@ async function renderFromEvent(data) {
           button.textContent = "🎁 SodaGift에서 선물 받기";
           button.setAttribute("aria-label", "SodaGift 수령 사이트 열기");
           if (winner.whisperStatus === "sent") {
-            button.classList.add("hidden");
-            status.textContent = "Twitch 귓속말로 SodaGift 수령 링크를 전송했습니다. 귓속말의 링크를 열어 선물을 받아 주세요.";
+            button.classList.remove("hidden");
+            status.textContent = "Twitch가 귓속말 전송 요청을 접수했습니다. 도착하지 않으면 아래 버튼으로 바로 받아 주세요.";
           } else {
             button.classList.remove("hidden");
             status.textContent = "Twitch 귓속말을 전송하지 못했습니다. 아래 버튼으로 SodaGift에서 직접 받아 주세요.";

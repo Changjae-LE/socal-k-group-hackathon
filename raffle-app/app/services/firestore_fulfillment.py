@@ -28,6 +28,7 @@ log = logging.getLogger("streamdrop.firestore_fulfillment")
 
 GiftProvider = Callable[[str, str, str, int | None], Awaitable[dict[str, str]]]
 WhisperProvider = Callable[[str, str], Awaitable[None]]
+LinkProvider = Callable[[int | str], Awaitable[str]]
 
 
 def _decode_value(value: dict[str, Any]) -> Any:
@@ -198,6 +199,23 @@ def _is_placeholder(winner: dict[str, Any]) -> bool:
     return "/claim" in link and winner.get("status") != "failed"
 
 
+def admin_link_backfill_candidates(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return issued orders that need encryption for the current admin browser."""
+    if data.get("status") != "drawn":
+        return []
+    key_id = str(data.get("adminClaimKeyId") or "")
+    public_key = data.get("adminClaimPublicKey")
+    if not key_id or not public_key:
+        return []
+    return [
+        winner
+        for winner in data.get("winners") or []
+        if winner.get("status") == "link_ready"
+        and str(winner.get("orderId") or "").isdigit()
+        and winner.get("adminGiftKeyId") != key_id
+    ]
+
+
 def fulfillment_candidates(data: dict[str, Any]) -> list[dict[str, Any]]:
     """Return winners that requested a gift or approved a legacy product choice."""
     if data.get("status") != "drawn":
@@ -272,14 +290,38 @@ async def fulfill_once(
     store: FirestoreEventStore,
     gift_provider: GiftProvider = sodagift.get_gift_link,
     whisper_provider: WhisperProvider = twitch.send_whisper,
+    link_provider: LinkProvider = sodagift.get_order_link,
     dry_run: bool = False,
 ) -> int:
     snapshot = await store.get_event()
     if not snapshot:
         return 0
     candidates = fulfillment_candidates(snapshot.data)
+    backfills = admin_link_backfill_candidates(snapshot.data)
     if dry_run:
-        return len(candidates)
+        return len(candidates) + len(backfills)
+    if not candidates and backfills:
+        candidate = backfills[0]
+        uid = _uid(candidate)
+        event_id = str(snapshot.data.get("eventId") or "")
+        key_id = str(snapshot.data.get("adminClaimKeyId") or "")
+        try:
+            link = await link_provider(candidate["orderId"])
+            encrypted_admin = encrypt_gift_link(
+                link, snapshot.data["adminClaimPublicKey"]
+            )
+        except Exception as exc:
+            log.warning("Admin LINK backfill failed for winner %s: %s", uid, exc)
+            return 0
+
+        def mark_admin_link(winner: dict[str, Any]) -> None:
+            winner["encryptedAdminGift"] = encrypted_admin
+            winner["adminGiftKeyId"] = key_id
+
+        if not await _mutate_winner(store, event_id, uid, mark_admin_link):
+            return 0
+        log.info("Admin SodaGift LINK ready for winner %s", uid)
+        return 1
     if not candidates:
         return 0
 
@@ -320,6 +362,16 @@ async def fulfill_once(
         await _mutate_winner(store, event_id, uid, mark_failed)
         raise
 
+    admin_encrypted = None
+    admin_key_id = str(snapshot.data.get("adminClaimKeyId") or "")
+    if admin_key_id and snapshot.data.get("adminClaimPublicKey"):
+        try:
+            admin_encrypted = encrypt_gift_link(
+                result["link"], snapshot.data["adminClaimPublicKey"]
+            )
+        except Exception as exc:
+            log.warning("Admin claim key is invalid: %s", exc)
+
     whisper_status = "skipped"
     if participant.get("twitch"):
         try:
@@ -341,6 +393,9 @@ async def fulfill_once(
             "status": "link_ready",
             "whisperStatus": whisper_status,
         })
+        if admin_encrypted:
+            winner["encryptedAdminGift"] = admin_encrypted
+            winner["adminGiftKeyId"] = admin_key_id
         winner.pop("giftOptions", None)
         winner.pop("error", None)
 

@@ -236,6 +236,45 @@ class FulfillmentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(real_link, sent[0][1])
         self.assertEqual(decrypt_claim(private_key, winner["encryptedGift"]), real_link)
 
+    async def test_existing_order_is_encrypted_for_admin_console(self) -> None:
+        admin_private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        store = FakeStore({
+            "status": "drawn",
+            "eventId": "event-admin",
+            "adminClaimKeyId": "admin-key-1",
+            "adminClaimPublicKey": public_jwk(admin_private_key),
+            "participants": {},
+            "winners": [{
+                "uid": "77",
+                "status": "link_ready",
+                "orderId": "33861",
+                "whisperStatus": "sent",
+            }],
+        })
+        real_link = "https://biz-sandbox.sodagift.com/claim/admin-visible"
+
+        async def forbidden_gift_provider(*_args) -> dict[str, str]:
+            self.fail("existing order must not create another gift")
+
+        async def link_provider(order_id: int | str) -> str:
+            self.assertEqual(str(order_id), "33861")
+            return real_link
+
+        processed = await fulfill_once(
+            store,
+            gift_provider=forbidden_gift_provider,
+            link_provider=link_provider,
+        )
+
+        self.assertEqual(processed, 1)
+        winner = store.data["winners"][0]
+        self.assertEqual(winner["adminGiftKeyId"], "admin-key-1")
+        self.assertEqual(
+            decrypt_claim(admin_private_key, winner["encryptedAdminGift"]),
+            real_link,
+        )
+        self.assertNotIn(real_link, str(winner))
+
     async def test_pending_winner_waits_for_claim_button(self) -> None:
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         store = FakeStore({
