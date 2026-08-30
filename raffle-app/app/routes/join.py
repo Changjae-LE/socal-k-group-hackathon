@@ -73,24 +73,20 @@ async def join_login():
     return RedirectResponse(twitch.authorize_url(st))
 
 
-@router.get("/join/callback")
-async def join_callback(request: Request, code: str = "", state_param: str = "", error: str = ""):
-    # Twitch는 쿼리 파라미터 이름이 'state'
-    st = request.query_params.get("state", state_param)
-    if error or not code:
-        return RedirectResponse("/join?error=oauth")
-    if st not in _oauth_states:
-        return RedirectResponse("/join?error=state")
-    _oauth_states.pop(st, None)
-    try:
-        token = await twitch.exchange_code(code)
-        user = await twitch.get_user(token)
-    except Exception:
-        log.exception("twitch oauth failed")
-        return RedirectResponse("/join?error=twitch")
-    resp = RedirectResponse("/join")
-    _set_session(resp, {"uid": user["id"], "nick": user["nickname"]})
-    return resp
+@router.get("/join/callback", response_class=HTMLResponse)
+async def join_callback():
+    """Twitch may still have localhost /join/callback registered.
+
+    The access token lives in the URL hash, which the server never sees,
+    so bounce the browser to the public Hosting /join page and continue there.
+    """
+    dest = config.PUBLIC_JOIN_URL
+    return HTMLResponse(
+        f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>Returning…</title></head>
+<body><script>
+location.replace({dest!r} + location.search + location.hash);
+</script></body></html>"""
+    )
 
 
 @router.get("/join/dev")

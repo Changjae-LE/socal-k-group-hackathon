@@ -15,13 +15,13 @@ router = APIRouter()
 @router.get("/overlay", response_class=HTMLResponse)
 async def overlay_page(request: Request):
     return templates.TemplateResponse(request, "overlay.html", {
-        "join_url": f"{config.BASE_URL}/join",
+        "join_url": config.PUBLIC_JOIN_URL,
     })
 
 
 @router.get("/qr.png")
 async def qr_png():
-    img = qrcode.make(f"{config.BASE_URL}/join", box_size=12, border=1)
+    img = qrcode.make(config.PUBLIC_JOIN_URL, box_size=12, border=1)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return Response(buf.getvalue(), media_type="image/png",

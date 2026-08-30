@@ -1,5 +1,21 @@
 function sdPublicUrl() {
-  return (window.STREAMDROP_PUBLIC_URL || location.origin).replace(/\/$/, "");
+  return (window.STREAMDROP_PUBLIC_URL || "https://hackathon-korean.web.app").replace(/\/$/, "");
+}
+
+function sdJoinUrl() {
+  return `${sdPublicUrl()}/join`;
+}
+
+function sdSendTwitchReturnToPublicJoin() {
+  const publicJoin = sdJoinUrl();
+  const here = `${location.origin}${location.pathname}`.replace(/\/$/, "");
+  const hasToken = location.hash.includes("access_token");
+  const hasCode = /[?&]code=/.test(location.search);
+  if ((hasToken || hasCode) && here !== publicJoin) {
+    location.replace(publicJoin + location.search + location.hash);
+    return true;
+  }
+  return false;
 }
 
 function sdDb() {

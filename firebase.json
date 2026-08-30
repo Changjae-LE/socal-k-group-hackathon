@@ -7,6 +7,12 @@
       "**/.*",
       "**/node_modules/**"
     ],
+    "rewrites": [
+      {
+        "source": "/join/callback",
+        "destination": "/join.html"
+      }
+    ],
     "headers": [
       {
         "source": "**",

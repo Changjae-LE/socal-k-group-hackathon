@@ -13,15 +13,15 @@ HELIX = "https://api.twitch.tv/helix"
 
 
 def redirect_uri() -> str:
-    return f"{config.BASE_URL}/join/callback"
+    """QR/phones always return to the public Hosting join page, not localhost."""
+    return config.TWITCH_REDIRECT_URI
 
 
 def authorize_url(state: str) -> str:
     params = {
         "client_id": config.TWITCH_CLIENT_ID,
         "redirect_uri": redirect_uri(),
-        "response_type": "code",
-        "scope": "",  # 식별만 필요 — 스코프 불필요
+        "response_type": "token",
         "state": state,
     }
     return f"{AUTH_BASE}/authorize?{urllib.parse.urlencode(params)}"

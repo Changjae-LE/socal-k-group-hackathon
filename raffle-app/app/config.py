@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
+PUBLIC_JOIN_URL = os.getenv("PUBLIC_JOIN_URL", "https://hackathon-korean.web.app/join").rstrip("/")
+TWITCH_REDIRECT_URI = os.getenv("TWITCH_REDIRECT_URI", PUBLIC_JOIN_URL)
 
 TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID", "")
 TWITCH_CLIENT_SECRET = os.getenv("TWITCH_CLIENT_SECRET", "")

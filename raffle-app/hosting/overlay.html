@@ -34,7 +34,7 @@
 <script src="/js/event.js"></script>
 <script>
 const countEl = document.getElementById("count");
-const joinUrl = `${sdPublicUrl()}/join`;
+const joinUrl = sdJoinUrl();
 new QRCode(document.getElementById("qr-box"), {
   text: joinUrl,
   width: 300,

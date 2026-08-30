@@ -12,7 +12,7 @@ QR 스캔 → Twitch 로그인 참여 → 추첨 → 당첨자 폰 + Twitch 귓�
 - 오버레이: https://hackathon-korean.web.app/overlay
 - 운영자: https://hackathon-korean.web.app/admin?token=streamdrop
 
-Twitch 콘솔 앱의 Redirect URL에 `https://hackathon-korean.web.app/join`을 넣은 뒤 `raffle-app/hosting/js/firebase-config.js`의 `STREAMDROP_TWITCH_CLIENT_ID`를 채우면 공개 참여 화면에 Twitch 로그인이 켜집니다.
+Twitch 콘솔 Redirect URL에는 `https://hackathon-korean.web.app/join` (그리고 예비용 `/join/callback`)을 넣으세요. 로그인 성공 후 항상 이 공개 `/join`으로 돌아옵니다. localhost로 돌아오면 안 됩니다.
 
 ```bash
 npx firebase deploy --only hosting,firestore --project hackathon-korean
@@ -50,11 +50,11 @@ cloudflared tunnel --url http://localhost:8000
 ```
 발급된 `https://xxx.trycloudflare.com`을:
 1. `.env`의 `BASE_URL`에 넣고 서버 재시작 (QR·귓속말 링크에 반영)
-2. Twitch 개발자 콘솔 앱의 OAuth Redirect URL에 `{BASE_URL}/join/callback` 등록
+2. 참가자 Twitch 로그인은 공개 Hosting `/join`으로 복귀합니다. Redirect URL에 `https://hackathon-korean.web.app/join`을 등록하세요.
 
 ## Twitch 설정
 1. https://dev.twitch.tv/console/apps 에서 앱 생성 → `TWITCH_CLIENT_ID/SECRET`
-2. Redirect URL: `{BASE_URL}/join/callback`
+2. Redirect URL: `https://hackathon-korean.web.app/join` (필수), `https://hackathon-korean.web.app/join/callback` (예비)
 3. 귓속말 발신 계정(전화번호 인증 필수)으로 토큰 발급:
    ```bash
    twitch token -u -s user:manage:whispers
