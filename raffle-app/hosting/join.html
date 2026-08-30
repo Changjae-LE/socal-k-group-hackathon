@@ -23,7 +23,7 @@
   <div id="sec-idle" class="card hidden">
     <div class="pulse"></div>
     <p><span class="nick" id="idle-nick"></span>님, 환영해요!</p>
-    <p class="gift-note">운영자 화면에 표시됐습니다. 이벤트가 열리면 국가를 선택하세요.</p>
+    <p class="gift-note">운영자 화면에 표시됐습니다. 다음 화면에서 국가를 선택하세요.</p>
   </div>
 
   <div id="sec-enter" class="card hidden">
@@ -75,8 +75,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js?v=3"></script>
-<script src="/js/event.js?v=3"></script>
+<script src="/js/firebase-config.js?v=4"></script>
+<script src="/js/event.js?v=4"></script>
 <script>
 const SESSION_KEY = "sd_session";
 const COUNTRIES = { KR:"🇰🇷 South Korea", US:"🇺🇸 United States", JP:"🇯🇵 Japan", CA:"🇨🇦 Canada", AU:"🇦🇺 Australia", GB:"🇬🇧 United Kingdom", FR:"🇫🇷 France", SG:"🇸🇬 Singapore", HK:"🇭🇰 Hong Kong", TW:"🇹🇼 Taiwan", PH:"🇵🇭 Philippines", TH:"🇹🇭 Thailand", VN:"🇻🇳 Vietnam", MY:"🇲🇾 Malaysia", ID:"🇮🇩 Indonesia", IN:"🇮🇳 India", CN:"🇨🇳 China" };
@@ -103,13 +103,14 @@ function saveSession(data) {
 }
 
 async function registerOnPublicEvent(session) {
-  const eventId = await sdWriteParticipant(session.uid, {
+  const written = await sdWriteParticipant(session.uid, {
     nickname: session.nick,
     country: session.country || "",
     twitch: session.twitch,
   });
-  session.eventId = eventId;
+  session.eventId = written.eventId;
   saveSession(session);
+  return written;
 }
 
 if (window.STREAMDROP_TWITCH_CLIENT_ID) {
@@ -161,8 +162,8 @@ document.getElementById("btn-login").onclick = async () => {
   };
   saveSession(session);
   try {
-    await registerOnPublicEvent(session);
-    renderFromEvent(window.__eventData || sdEmptyEvent());
+    const written = await registerOnPublicEvent(session);
+    renderFromEvent(written);
   } catch (err) {
     console.error(err);
     showError("공개 서버에 참여 정보를 보내지 못했습니다. 잠시 후 다시 시도해 주세요.");
@@ -174,16 +175,12 @@ document.getElementById("btn-enter").onclick = async () => {
   const session = loadSession();
   if (!country) { showError("국가를 선택해 주세요."); return; }
   if (!session) return;
-  const data = window.__eventData;
-  if (!data || data.status !== "open") {
-    showError("이벤트가 아직 열리지 않았어요. 잠시 후 다시 시도해 주세요.");
-    return;
-  }
   session.country = country;
   saveSession(session);
   try {
-    await registerOnPublicEvent(session);
+    const written = await registerOnPublicEvent(session);
     showError("");
+    renderFromEvent(written);
   } catch (err) {
     console.error(err);
     showError("참여 저장에 실패했습니다.");
@@ -219,9 +216,8 @@ function renderFromEvent(data) {
     }
     return;
   }
-  if (joined && data.status === "open") { show("sec-wait"); return; }
-  if (data.status === "open" && session.uid) { show("sec-enter"); return; }
-  if (waiting || session.uid) { show("sec-idle"); return; }
+  if (joined) { show("sec-wait"); return; }
+  if (session.uid) { show("sec-enter"); return; }
   show("sec-login");
 }
 

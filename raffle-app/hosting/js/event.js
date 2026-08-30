@@ -54,20 +54,30 @@ function sdJoinedList(data) {
 }
 
 async function sdWriteParticipant(uid, fields) {
-  await sdEnsureEvent();
-  const snap = await sdEventRef().get();
-  const data = snap.data() || sdEmptyEvent();
-  const prev = (data.participants || {})[uid] || {};
-  await sdEventRef().set({
-    [`participants.${uid}`]: {
+  const ref = sdEventRef();
+  return sdDb().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.exists ? (snap.data() || sdEmptyEvent()) : sdEmptyEvent();
+    const participants = { ...(data.participants || {}) };
+    const prev = participants[uid] || {};
+    const next = {
       nickname: fields.nickname || prev.nickname || "",
       country: fields.country || prev.country || "",
       joinedAt: prev.joinedAt || Date.now(),
       twitch: Boolean(fields.twitch || prev.twitch),
-    },
-    updatedAt: Date.now(),
-  }, { merge: true });
-  return data.eventId;
+    };
+    participants[uid] = next;
+    const status = next.country && data.status !== "drawn" ? "open" : (data.status || "idle");
+    const written = {
+      status,
+      eventId: data.eventId || sdEmptyEvent().eventId,
+      participants,
+      winners: data.winners || [],
+      updatedAt: Date.now(),
+    };
+    tx.set(ref, written, { merge: true });
+    return written;
+  });
 }
 
 function sdListenEvent(onData, onError) {
