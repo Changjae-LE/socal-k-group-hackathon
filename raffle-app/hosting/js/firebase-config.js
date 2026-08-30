@@ -11,4 +11,4 @@ window.STREAMDROP_PUBLIC_URL = "https://hackathon-korean.web.app";
 window.STREAMDROP_TWITCH_REDIRECT_URI = "https://hackathon-korean.web.app/join";
 // Public Twitch Client ID only. Register Redirect URL:
 // https://hackathon-korean.web.app/join
-window.STREAMDROP_TWITCH_CLIENT_ID = "z5t5pnz08uh152c9kiinrw5rb8dyfo";
+window.STREAMDROP_TWITCH_CLIENT_ID = "bnppeajglhm2h0r0d615yzbb6kzfj1";
