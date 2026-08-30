@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" class="join-page">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>StreamDrop — 참여하기</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 <body>
 <div class="join-wrap">
@@ -26,26 +26,28 @@
 
   <div id="sec-enter" class="card hidden">
     <p><span class="nick" id="enter-nick"></span>님, 선물을 받을 국가를 선택하세요</p>
-    <select class="country" id="country" required>
-      <option value="" disabled selected>국가 선택</option>
-      <option value="KR">🇰🇷 South Korea</option>
-      <option value="US">🇺🇸 United States</option>
-      <option value="JP">🇯🇵 Japan</option>
-      <option value="CA">🇨🇦 Canada</option>
-      <option value="AU">🇦🇺 Australia</option>
-      <option value="GB">🇬🇧 United Kingdom</option>
-      <option value="FR">🇫🇷 France</option>
-      <option value="SG">🇸🇬 Singapore</option>
-      <option value="HK">🇭🇰 Hong Kong</option>
-      <option value="TW">🇹🇼 Taiwan</option>
-      <option value="PH">🇵🇭 Philippines</option>
-      <option value="TH">🇹🇭 Thailand</option>
-      <option value="VN">🇻🇳 Vietnam</option>
-      <option value="MY">🇲🇾 Malaysia</option>
-      <option value="ID">🇮🇩 Indonesia</option>
-      <option value="IN">🇮🇳 India</option>
-      <option value="CN">🇨🇳 China</option>
-    </select>
+    <div class="country-picker" id="country-picker">
+      <select class="country" id="country" required>
+        <option value="" disabled selected>국가 선택</option>
+        <option value="KR">🇰🇷 South Korea</option>
+        <option value="US">🇺🇸 United States</option>
+        <option value="JP">🇯🇵 Japan</option>
+        <option value="CA">🇨🇦 Canada</option>
+        <option value="AU">🇦🇺 Australia</option>
+        <option value="GB">🇬🇧 United Kingdom</option>
+        <option value="FR">🇫🇷 France</option>
+        <option value="SG">🇸🇬 Singapore</option>
+        <option value="HK">🇭🇰 Hong Kong</option>
+        <option value="TW">🇹🇼 Taiwan</option>
+        <option value="PH">🇵🇭 Philippines</option>
+        <option value="TH">🇹🇭 Thailand</option>
+        <option value="VN">🇻🇳 Vietnam</option>
+        <option value="MY">🇲🇾 Malaysia</option>
+        <option value="ID">🇮🇩 Indonesia</option>
+        <option value="IN">🇮🇳 India</option>
+        <option value="CN">🇨🇳 China</option>
+      </select>
+    </div>
     <button class="btn accent" id="btn-enter" type="button">🎉 이벤트 참여하기</button>
   </div>
 
@@ -84,8 +86,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js?v=12"></script>
-<script src="/js/event.js?v=12"></script>
+<script src="/js/firebase-config.js?v=7"></script>
+<script src="/js/event.js?v=7"></script>
 <script>
 // 로컬/통합 테스트용: ?edoc=events/test-recs 로 별도 이벤트 문서 사용
 {
@@ -116,192 +118,43 @@ function saveSession(data) {
   localStorage.setItem(SESSION_KEY, JSON.stringify(data));
 }
 
-function bytesFromBase64Url(value) {
-  const base64 = value.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((value.length + 3) % 4);
-  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-}
-
-async function ensureClaimKeys(session) {
-  if (session.claimPublicKey && session.claimPrivateKey) return session;
-  if (!window.crypto || !window.crypto.subtle) {
-    throw new Error("이 브라우저에서는 안전한 링크 수령을 사용할 수 없습니다.");
+function setupCountryPicker() {
+  const select = document.getElementById("country");
+  const wrap = document.getElementById("country-picker");
+  if (!select || !wrap || wrap.querySelector(".country-display")) return;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "country-display";
+  const list = document.createElement("div");
+  list.className = "country-list";
+  function label() {
+    const opt = select.options[select.selectedIndex];
+    btn.textContent = opt && opt.text ? opt.text : "국가 선택";
   }
-  const pair = await crypto.subtle.generateKey({
-    name: "RSA-OAEP",
-    modulusLength: 2048,
-    publicExponent: new Uint8Array([1, 0, 1]),
-    hash: "SHA-256",
-  }, true, ["encrypt", "decrypt"]);
-  session.claimPublicKey = await crypto.subtle.exportKey("jwk", pair.publicKey);
-  session.claimPrivateKey = await crypto.subtle.exportKey("jwk", pair.privateKey);
-  saveSession(session);
-  return session;
-}
-
-async function decryptGiftLink(session, encrypted) {
-  if (!session.claimPrivateKey) throw new Error("이 기기의 수령 키를 찾을 수 없습니다.");
-  const privateKey = await crypto.subtle.importKey(
-    "jwk",
-    session.claimPrivateKey,
-    { name: "RSA-OAEP", hash: "SHA-256" },
-    false,
-    ["decrypt"],
-  );
-  const rawKey = await crypto.subtle.decrypt(
-    { name: "RSA-OAEP" },
-    privateKey,
-    bytesFromBase64Url(encrypted.wrappedKey),
-  );
-  const aesKey = await crypto.subtle.importKey("raw", rawKey, "AES-GCM", false, ["decrypt"]);
-  const clear = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: bytesFromBase64Url(encrypted.iv) },
-    aesKey,
-    bytesFromBase64Url(encrypted.ciphertext),
-  );
-  const link = new TextDecoder().decode(clear);
-  let parsed;
-  try {
-    parsed = new URL(link);
-  } catch {
-    throw new Error("수령 링크 형식이 올바르지 않습니다.");
-  }
-  const host = parsed.hostname.toLowerCase();
-  if (
-    parsed.protocol !== "https:" ||
-    !(host === "sodagift.com" || host.endsWith(".sodagift.com"))
-  ) {
-    throw new Error("SodaGift에서 발급한 수령 링크가 아닙니다.");
-  }
-  return parsed.href;
-}
-
-let selectedGiftId = null;
-
-function approvalButtonLabel() {
-  return "Twitch 귓속말로 선물 받기";
-}
-
-function renderGiftOptions(options) {
-  const container = document.getElementById("gift-options");
-  const approve = document.getElementById("gift-approve");
-  container.replaceChildren();
-  if (!options.some((option) => Number(option.id) === selectedGiftId)) selectedGiftId = null;
-
-  for (const option of options) {
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "gift-option";
-    if (Number(option.id) === selectedGiftId) card.classList.add("selected");
-
-    if (option.imageUrl) {
-      const image = document.createElement("img");
-      image.src = option.imageUrl;
-      image.alt = "";
-      image.loading = "lazy";
-      image.referrerPolicy = "no-referrer";
-      card.appendChild(image);
-    }
-
-    const copy = document.createElement("span");
-    const name = document.createElement("strong");
-    const price = document.createElement("small");
-    name.textContent = option.name || "Gift";
-    price.textContent = `${option.currency || ""} ${Number(option.amount || 0).toLocaleString()}`.trim();
-    copy.append(name, price);
-    card.appendChild(copy);
-    card.onclick = () => {
-      selectedGiftId = Number(option.id);
-      renderGiftOptions(options);
+  [...select.options].forEach((opt) => {
+    if (!opt.value) return;
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "country-item";
+    item.textContent = opt.text;
+    item.onclick = () => {
+      select.value = opt.value;
+      label();
+      wrap.classList.remove("open");
     };
-    container.appendChild(card);
-  }
-  approve.disabled = selectedGiftId === null;
-  approve.textContent = approvalButtonLabel();
-}
-
-async function requestGiftLink() {
-  const session = loadSession();
-  if (!session) throw new Error("Twitch 계정으로 다시 로그인해 주세요.");
-  const ref = sdEventRef();
-  await sdDb().runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const data = snap.data() || sdEmptyEvent();
-    const winners = [...(data.winners || [])];
-    const index = winners.findIndex((winner) => winner.uid === session.uid);
-    if (index < 0) throw new Error("당첨자 정보를 찾을 수 없습니다.");
-    const winner = { ...winners[index] };
-    if (winner.status !== "pending") {
-      if (winner.status === "claim_requested" || winner.status === "ordering") return;
-      throw new Error("이미 선물 발급이 진행 중이거나 완료되었습니다.");
-    }
-    winners[index] = {
-      ...winner,
-      status: "claim_requested",
-      claimRequestedAt: Date.now(),
-      whisperStatus: "sending",
-    };
-    tx.set(ref, { winners, updatedAt: Date.now() }, { merge: true });
+    list.appendChild(item);
   });
-}
-
-document.getElementById("gift-start").onclick = async () => {
-  const start = document.getElementById("gift-start");
-  start.disabled = true;
-  start.textContent = "SodaGift LINK 발급 요청 중...";
-  try {
-    await requestGiftLink();
-    showError("");
-  } catch (err) {
-    console.error(err);
-    start.disabled = false;
-    start.textContent = "🎁 선물 받기";
-    showError(err.message || "선물 발급을 요청하지 못했습니다.");
-  }
-};
-
-async function approveSelectedGift() {
-  const session = loadSession();
-  if (!session || selectedGiftId === null) throw new Error("선물을 선택해 주세요.");
-  const ref = sdEventRef();
-  await sdDb().runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const data = snap.data() || sdEmptyEvent();
-    const winners = [...(data.winners || [])];
-    const index = winners.findIndex((winner) => winner.uid === session.uid);
-    if (index < 0) throw new Error("당첨자 정보를 찾을 수 없습니다.");
-    const winner = { ...winners[index] };
-    if (winner.status !== "choice_required") {
-      throw new Error("이미 주문이 진행 중이거나 선택할 수 없는 상태입니다.");
-    }
-    const option = (winner.giftOptions || []).find(
-      (item) => Number(item.id) === selectedGiftId,
-    );
-    if (!option) throw new Error("선택한 상품을 다시 확인해 주세요.");
-    winners[index] = {
-      ...winner,
-      status: "order_approved",
-      selectedProductId: Number(option.id),
-      selectedProductName: option.name || "Gift",
-      orderApprovedAt: Date.now(),
-    };
-    tx.set(ref, { winners, updatedAt: Date.now() }, { merge: true });
+  btn.onclick = (ev) => {
+    ev.preventDefault();
+    wrap.classList.toggle("open");
+  };
+  document.addEventListener("click", (ev) => {
+    if (!wrap.contains(ev.target)) wrap.classList.remove("open");
   });
+  label();
+  wrap.appendChild(btn);
+  wrap.appendChild(list);
 }
-
-document.getElementById("gift-approve").onclick = async () => {
-  const approve = document.getElementById("gift-approve");
-  approve.disabled = true;
-  approve.textContent = "주문 요청 중...";
-  try {
-    await approveSelectedGift();
-    showError("");
-  } catch (err) {
-    console.error(err);
-    approve.disabled = false;
-    approve.textContent = approvalButtonLabel();
-    showError(err.message || "선물 선택을 저장하지 못했습니다.");
-  }
-};
 
 async function registerOnPublicEvent(session) {
   if (!session || session.twitch !== true || !/^\d+$/.test(String(session.uid || ""))) {
@@ -517,6 +370,16 @@ async function renderFromEvent(data) {
 
   if (data.status === "drawn" && (joined || waiting || winner)) {
     if (winner) {
+      document.getElementById("win-product").textContent = winner.productName
+        || (winner.status === "ordering" ? "SodaGift 링크를 발급하는 중..." : "StreamDrop Gift Card");
+      const giftBtn = document.getElementById("gift-btn");
+      if (winner.giftLink && /^https?:\/\//.test(winner.giftLink)) {
+        giftBtn.href = winner.giftLink;
+        giftBtn.classList.remove("hidden");
+      } else {
+        giftBtn.href = "#";
+        giftBtn.classList.add("hidden");
+      }
       show("sec-win");
       const product = document.getElementById("win-product");
       const start = document.getElementById("gift-start");
@@ -587,6 +450,8 @@ async function renderFromEvent(data) {
   if (session.uid) { show("sec-enter"); return; }
   show("sec-login");
 }
+
+setupCountryPicker();
 
 if (sdSendTwitchReturnToPublicJoin()) {
   // Twitch came back to localhost or another host; bounce to public /join.

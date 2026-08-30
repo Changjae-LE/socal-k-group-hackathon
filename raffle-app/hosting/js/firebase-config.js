@@ -10,5 +10,7 @@ window.STREAMDROP_ADMIN_TOKEN = "streamdrop";
 window.STREAMDROP_PUBLIC_URL = "https://hackathon-korean-team5.web.app";
 window.STREAMDROP_TWITCH_REDIRECT_URI = "https://hackathon-korean-team5.web.app/join";
 // Public Twitch Client ID only. Register Redirect URL:
-// https://hackathon-korean-team5.web.app/join
-window.STREAMDROP_TWITCH_CLIENT_ID = "bnppeajglhm2h0r0d615yzbb6kzfj1";
+// https://hackathon-korean.web.app/join
+window.STREAMDROP_TWITCH_CLIENT_ID = "z5t5pnz08uh152c9kiinrw5rb8dyfo";
+// Live Worker (streamdrop-gift). Git Worker socal-k-group-hackathon is unused.
+window.STREAMDROP_GIFT_API = "https://streamdrop-gift.wildkid123456.workers.dev";

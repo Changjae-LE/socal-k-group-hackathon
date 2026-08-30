@@ -17,7 +17,6 @@ from app import config
 
 log = logging.getLogger("streamdrop.sodagift")
 
-HEADERS = {"SODA-API-KEY": config.SODAGIFT_API_KEY}
 LINK_POLL_INTERVAL = 1.5
 LINK_POLL_TIMEOUT = 30.0
 
@@ -31,6 +30,22 @@ class SodaGiftError(Exception):
 
 def mock_mode() -> bool:
     return not config.SODAGIFT_API_KEY
+
+
+def _headers() -> dict:
+    return {
+        "SODA-API-KEY": config.SODAGIFT_API_KEY,
+        "accept": "application/json",
+    }
+
+
+async def check_balance() -> dict:
+    """GET /v1/accounts/balance — SodaGift's first API-key check."""
+    async with httpx.AsyncClient(base_url=config.SODAGIFT_BASE_URL, headers=_headers(), timeout=15) as client:
+        r = await client.get(config.SODAGIFT_BALANCE_PATH)
+        if r.status_code != 200:
+            raise SodaGiftError(f"balance check failed {r.status_code}: {r.text[:200]}")
+        return r.json()
 
 
 def _log_order(record: dict) -> None:
@@ -64,8 +79,8 @@ async def list_products(country: str) -> list[dict]:
     if country in _catalog_cache:
         return _catalog_cache[country]
 
-    async with httpx.AsyncClient(base_url=config.SODAGIFT_BASE_URL, headers=HEADERS, timeout=15) as client:
-        response = await client.get(
+    async with httpx.AsyncClient(base_url=config.SODAGIFT_BASE_URL, headers=_headers(), timeout=15) as client:
+        r = await client.get(
             "/v1/products",
             params={"country_code": country, "delivery_method": "LINK", "size": 100},
         )
@@ -146,7 +161,7 @@ async def _create_order(product: dict, recipient_name: str, ref_id: str) -> int:
     ):
         body["item"]["custom_amount"] = product["min_amount"]
 
-    async with httpx.AsyncClient(base_url=config.SODAGIFT_BASE_URL, headers=HEADERS, timeout=20) as client:
+    async with httpx.AsyncClient(base_url=config.SODAGIFT_BASE_URL, headers=_headers(), timeout=20) as client:
         for attempt in range(3):
             r = await client.post("/v1/orders", json=body)
             if r.status_code == 200:
@@ -171,7 +186,7 @@ async def _create_order(product: dict, recipient_name: str, ref_id: str) -> int:
 async def _fetch_link(order_id: int) -> str:
     """주문 상세를 폴링해서 delivery.link 획득."""
     deadline = time.monotonic() + LINK_POLL_TIMEOUT
-    async with httpx.AsyncClient(base_url=config.SODAGIFT_BASE_URL, headers=HEADERS, timeout=15) as client:
+    async with httpx.AsyncClient(base_url=config.SODAGIFT_BASE_URL, headers=_headers(), timeout=15) as client:
         while time.monotonic() < deadline:
             r = await client.get(f"/v1/orders/{order_id}")
             if r.status_code == 200:
@@ -212,7 +227,8 @@ async def get_gift_link(
         _log_order({"mode": "mock", "nickname": nickname, "country": country, **result})
         return result
 
-    product = await select_product(country, product_id)
+    await check_balance()
+    product = await select_product(country)
     order_id = await _create_order(product, nickname, ref_id)
     link = await _fetch_link(order_id)
     result = {

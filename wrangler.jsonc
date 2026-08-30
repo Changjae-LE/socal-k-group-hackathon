@@ -1,0 +1,9 @@
+{
+  "name": "streamdrop-gift",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-08-29",
+  "workers_dev": true,
+  "observability": {
+    "enabled": false
+  }
+}

@@ -10,5 +10,7 @@ orders.log
 firebase-debug.log
 .firebase/
 streamdrop-app/out/
-.omc/
-cloudflared
+functions/node_modules/
+functions/secrets.js
+.wrangler/
+.dev.vars

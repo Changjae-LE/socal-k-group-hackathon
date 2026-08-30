@@ -1,4 +1,10 @@
 {
+  "functions": {
+    "source": "functions",
+    "predeploy": [
+      "node functions/write-secrets.js"
+    ]
+  },
   "hosting": {
     "site": "hackathon-korean-team5",
     "public": "raffle-app/hosting",
@@ -12,6 +18,10 @@
       {
         "source": "/join/callback",
         "destination": "/join.html"
+      },
+      {
+        "source": "/api/gift",
+        "function": "createGift"
       }
     ],
     "headers": [
