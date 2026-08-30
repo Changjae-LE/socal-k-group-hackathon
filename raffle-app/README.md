@@ -11,6 +11,7 @@ QR 스캔 → Twitch 로그인 → 참여 → 추첨 → 선물 받기 → SodaG
 - 참여: https://hackathon-korean-team5.web.app/join
 - 오버레이: https://hackathon-korean-team5.web.app/overlay
 - 운영자: https://hackathon-korean-team5.web.app/admin?token=streamdrop
+- `BASE_URL`: https://hackathon-korean-team5.web.app/
 
 Twitch 콘솔 Redirect URL에는 `https://hackathon-korean-team5.web.app/join` (그리고 예비용 `/join/callback`)을 넣으세요. 로그인 성공 후 항상 이 공개 `/join`으로 돌아옵니다. localhost로 돌아오면 안 됩니다.
 
@@ -18,7 +19,7 @@ Twitch 콘솔 Redirect URL에는 `https://hackathon-korean-team5.web.app/join` (
 npx firebase deploy --only hosting,firestore --project hackathon-korean
 ```
 
-로컬 Python 서버는 Twitch OAuth·SodaGift API용입니다. 공개 QR 데모는 Hosting URL을 사용하세요.
+참가자 로그인과 이벤트 참여는 Firebase Hosting에서만 진행합니다. 로컬 Python 프로세스는 SodaGift 지급 브리지와 Twitch 귓속말 전송에 사용합니다.
 
 ## 화면
 | 라우트 | 용도 |
@@ -36,16 +37,7 @@ cp .env.example .env   # 값 채우기
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-참가자 등록에는 Twitch 로그인이 반드시 필요합니다. SodaGift 키가 없을 때만 선물 링크가 mock 모드로 동작합니다.
-
-## 폰에서 접속 (터널)
-폰이 QR로 접속해야 하므로 공개 URL이 필요하다.
-```bash
-cloudflared tunnel --url http://localhost:8000
-```
-발급된 `https://xxx.trycloudflare.com`을:
-1. `.env`의 `BASE_URL`에 넣고 서버 재시작 (QR·귓속말 링크에 반영)
-2. 참가자 Twitch 로그인은 공개 Hosting `/join`으로 복귀합니다. Redirect URL에 `https://hackathon-korean-team5.web.app/join`을 등록하세요.
+참가자 등록에는 Twitch OAuth 로그인이 반드시 필요합니다. OAuth 없는 로컬 참가자와 별도 닉네임 참여 기능은 제공하지 않습니다. `.env`의 `BASE_URL`은 `https://hackathon-korean-team5.web.app/`을 사용합니다. SodaGift 키가 없을 때만 선물 링크가 mock 모드로 동작합니다.
 
 ## Twitch 설정
 1. https://dev.twitch.tv/console/apps 에서 앱 생성 → `TWITCH_CLIENT_ID` 설정

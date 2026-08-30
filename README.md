@@ -1,286 +1,273 @@
 # StreamDrop
 
-> Twitch 라이브 방송의 QR 참여부터 추첨, 국가별 디지털 선물 수령까지 한 흐름으로 연결하는 글로벌 팬 리워드 서비스
+> 당첨의 순간을 전 세계 팬의 선물로 연결하는 Twitch 라이브 리워드 서비스
 
-StreamDrop은 전 세계 시청자가 함께하는 Twitch 방송에서 이벤트 경품을 빠르고 안전하게 전달하기 위한 해커톤 MVP입니다. 운영자는 방송 중 참여를 열고 당첨자를 추첨하며, 참가자는 휴대폰에서 결과를 확인한 뒤 SodaGift의 개인 수령 링크로 선물을 받습니다.
+StreamDrop은 Twitch 방송의 QR 참여, 실시간 추첨, 당첨자 승인, 국가별 SodaGift LINK 수령을 하나의 흐름으로 연결한 해커톤 MVP입니다. 운영자는 OBS와 운영자 화면에서 이벤트를 진행하고, 참가자는 Twitch 계정으로 참여해 자신의 휴대폰에서 결과와 선물 수령 절차를 확인합니다.
 
-- 발표 자료: [StreamDrop Twitch 해커톤 기획안 v2](Demo/Presentation/StreamDrop_Twitch_%ED%95%B4%EC%BB%A4%ED%86%A4_%EA%B8%B0%ED%9A%8D%EC%95%88_v2.pptx)
-- 최종 통합 데모: [`raffle-app`](raffle-app)
-- 초기 OBS 오버레이 프로토타입: [`streamdrop-app`](streamdrop-app)
-- 공개 Hosting: https://hackathon-korean-team5.web.app — 참여 `/join`, 오버레이 `/overlay`, 운영 `/admin?token=streamdrop`
+- 발표 자료: [StreamDrop Twitch 해커톤 기획안 v3](Demo/Presentation/StreamDrop_Twitch_%ED%95%B4%EC%BB%A4%ED%86%A4_%EA%B8%B0%ED%9A%8D%EC%95%88_v3.pptx)
+- 최종 데모: [raffle-app](raffle-app)
+- 초기 OBS 프로토타입: [streamdrop-app](streamdrop-app)
+- 공개 데모: [홈](https://hackathon-korean-team5.web.app) · [참여](https://hackathon-korean-team5.web.app/join) · [오버레이](https://hackathon-korean-team5.web.app/overlay) · [운영자](https://hackathon-korean-team5.web.app/admin?token=streamdrop)
+- 현재 통합 브랜치: [feature/TEAM5-sodagift-LINK-test](https://github.com/Changjae-LE/socal-k-group-hackathon/tree/feature/TEAM5-sodagift-LINK-test)
 
-## 1. 해결하려는 문제
+## Team 5
 
-Twitch의 크리에이터와 K-pop·게임 팬덤은 전 세계에 흩어져 있습니다. 라이브 퀴즈나 추첨은 쉽게 열 수 있지만, 당첨 이후에는 다음 문제가 남습니다.
+| 멤버 | 소개 |
+|---|---|
+| Dexter Kim | 식사와 응원을 맡은 팀의 에너지 |
+| Christian Lee | 개성 넘치는 멋쟁이 |
+| 이창재 | 얼굴을 담당하고 있는 팀의 비주얼 |
+| 최재원 | 5팀의 브레인 |
 
-1. 국가마다 구매·사용할 수 있는 기프트 상품이 다릅니다.
-2. 참여 확인, 추첨, 경품 지급이 서로 다른 도구에서 진행됩니다.
-3. 공개 채팅에 수령 링크를 올리면 다른 사람이 사용할 수 있습니다.
-4. 실물 배송은 주소 수집, 배송비, 개인정보 처리 부담이 큽니다.
+## 1. 아이디어 채택
 
-StreamDrop은 방송 화면, 운영 화면, 참가자 휴대폰을 하나의 이벤트 상태로 연결하고, 당첨자에게만 국가별 SodaGift LINK를 전달해 이 과정을 단순화합니다.
+### 채택 방법
 
-## 2. 핵심 사용자 경험
+하루 안에 실제 동작하는 결과를 만들기 위해 후보 아이디어를 다음 기준으로 비교했습니다.
+
+1. **문제 크기:** 글로벌 팬이 실제로 겪는 지급 문제인가?
+2. **구현 가능성:** 4명이 하루 안에 핵심 흐름을 시연할 수 있는가?
+3. **API 적합성:** SodaGift LINK 방식의 강점을 분명하게 보여주는가?
+4. **관심도:** 현장에서 누구나 참여하고 결과를 바로 이해할 수 있는가?
+5. **수익 확장성:** 반복 캠페인과 경품 주문으로 이어질 수 있는가?
+
+### 채택 배경
+
+- 글로벌 팬은 같은 방송에 모이지만 사용할 수 있는 상품과 통화는 국가마다 다릅니다.
+- 라이브 추첨의 흥분이 유지되는 동안 당첨자가 바로 보상을 확인해야 합니다.
+- 실물 배송은 주소 수집, 배송비, 개인정보 처리 부담이 큽니다.
+- SodaGift LINK는 이메일이나 배송 주소를 먼저 수집하지 않고 수령 경험으로 연결할 수 있습니다.
+
+## 2. 제품 흐름
 
 ```mermaid
 flowchart LR
     A[운영자가 이벤트 시작] --> B[OBS에 참여 QR 노출]
-    B --> C[시청자가 Twitch 로그인·국가 선택]
-    C --> D[운영 화면과 OBS 참여 인원 갱신]
-    D --> E[운영자가 실시간 추첨]
-    E --> F[OBS 당첨 발표]
-    E --> G[당첨자 화면에 선물 받기 표시]
-    G --> H[버튼 클릭 후 국가별 상품 자동 선택]
-    H --> I[SodaGift LINK 주문 후 Twitch 귓속말]
-    I --> J[SodaGift에서 선물 수령]
+    B --> C[Twitch 로그인]
+    C --> D[국가 선택 후 참여]
+    D --> E[운영자가 추첨]
+    E --> F[당첨 화면과 선물 받기 버튼]
+    F --> G[당첨자가 버튼 클릭]
+    G --> H[국가에 맞는 SodaGift LINK URL 생성]
+    H --> I[Twitch 귓속말 전달 요청]
+    I --> J[SodaGift 사이트에서 상품 선택]
+    J --> K[주문 완료]
 ```
+
+핵심 원칙은 **당첨자가 “선물 받기”를 눌러 승인한 뒤에만 수령 LINK를 생성한다**는 것입니다.
 
 ### 참가자
 
-1. Twitch 방송의 QR 코드를 스캔합니다.
-2. Twitch 계정으로 로그인하고 국가를 선택합니다.
-3. 같은 휴대폰 화면에서 참여 완료와 추첨 결과를 기다립니다.
-4. 당첨 화면에 표시된 “선물 받기” 버튼을 누릅니다.
-5. 서버가 국가별 기본 상품으로 SodaGift LINK 주문을 생성합니다.
-6. 당첨자는 Twitch 귓속말의 URL을 열어 SodaGift 사이트에서 수령을 완료합니다.
+1. 방송 화면의 QR을 스캔합니다.
+2. Twitch 계정으로 로그인합니다. 별도 닉네임 참여는 지원하지 않습니다.
+3. 국가를 선택하고 이벤트에 참여합니다.
+4. 당첨되면 결과와 **선물 받기** 버튼이 함께 표시됩니다.
+5. 버튼을 누르면 국가에 맞는 SodaGift LINK URL이 생성됩니다.
+6. Twitch 귓속말 또는 참가자 화면의 수령 경로로 URL을 엽니다.
+7. SodaGift 사이트에서 원하는 상품을 선택하고 주문을 완료합니다.
 
 ### 운영자
 
 1. `/admin`에서 이벤트를 시작합니다.
-2. 참가자 수, Twitch 표시 이름, 국가를 실시간으로 확인합니다.
+2. Twitch 참가자와 국가 선택 여부를 확인합니다.
 3. 당첨 인원을 정하고 추첨합니다.
-4. 주문·LINK 발급·귓속말 상태를 확인합니다.
+4. LINK 생성 상태, Twitch 접수 상태, 생성된 수령 URL을 확인합니다.
 5. 이벤트를 초기화해 다음 시연을 준비합니다.
 
-### 방송 시청자
+### 방송 화면
 
-OBS Browser Source에 `/overlay`를 추가하면 QR 코드, 참가 인원, 당첨자 발표가 Twitch 송출 화면에 실시간으로 반영됩니다.
+OBS Browser Source에 `/overlay`를 추가하면 QR, 참여 인원, 당첨자 발표가 Twitch 송출 화면에 실시간으로 반영됩니다.
 
-## 3. 왜 SodaGift인가
-
-SodaGift의 국가별 상품 조회와 `LINK` 전달 방식을 사용하면 수신자의 이메일이나 주소를 미리 수집하지 않고도 디지털 선물을 전달할 수 있습니다.
-
-실제 연동 순서는 다음과 같습니다.
-
-1. 당첨자가 “선물 받기” 버튼 클릭
-2. `GET /v1/products` — 참가자 국가의 LINK 상품 중 기본 상품 자동 선택
-3. `POST /v1/orders` — 선택된 상품으로 LINK 주문 생성
-4. `GET /v1/orders/{id}` — `delivery.link` 획득
-5. 실제 수령 URL을 로그인한 Twitch 계정의 귓속말로 전송
-6. 당첨자가 SodaGift 사이트에서 상품을 수령
-
-API 키와 운영자 토큰은 서버 환경변수에만 저장합니다. 수령 링크는 링크를 가진 사람이 사용할 수 있는 민감 정보이므로 OBS나 공개 운영 데이터에 노출하지 않습니다.
-
-## 4. 구현된 기능
+## 3. 기능 정의
 
 | 영역 | 구현 내용 |
 |---|---|
-| OBS 오버레이 | QR, 참여 인원, 당첨자 발표 애니메이션 |
-| 모바일 참여 | Twitch OAuth, 국가 선택, 참여·결과·수령 상태 표시 |
-| 운영자 화면 | 이벤트 시작, 참가자 확인, 복수 인원 추첨, 초기화 |
-| 실시간 동기화 | Overlay·Admin·참가자별 WebSocket 채널 |
-| SodaGift | 선물 받기 승인 후 국가별 기본 상품으로 LINK 주문, 결과 폴링, 재시도 |
-| Twitch | OAuth 사용자 식별, 당첨자 귓속말 발송 |
-| 데모 폴백 | API 키가 없으면 Mock Gift와 가상 Claim 페이지 사용 |
-| 지급 안정성 | 이벤트·사용자 기반 외부 참조 ID, 주문 결과 로그, 상품 캐시 |
+| 참여 `/join` | Twitch OAuth, 국가 선택, 참여·추첨 결과, 선물 받기 버튼 |
+| 방송 `/overlay` | QR, 참여 인원, 당첨자 발표 애니메이션 |
+| 운영 `/admin` | 이벤트 시작, 참가자 확인, 추첨, 지급 상태와 URL 확인 |
+| 실시간 상태 | Firebase Hosting + Firestore `events/live` 동기화 |
+| 지급 브리지 | 당첨자 승인 감지, SodaGift LINK 발급, Twitch 귓속말 요청 |
+| 보안 | API 키는 로컬 환경변수에만 저장하고 수령 URL은 공개 화면에서 분리 |
+| 데모 폴백 | 참가자 직접 수령 버튼과 운영자 URL 확인 경로 유지 |
 
-현재 이벤트 상태는 Firebase Firestore `events/live`에 저장됩니다. SodaGift API 키와 실제 주문 처리는 로컬 지급 브리지에만 두고, 공개 Firestore에는 상품 정보와 암호화된 수령 링크만 저장합니다.
-
-## 5. 기술 구성
+## 4. 시스템 아키텍처
 
 ```text
-Twitch + OBS Browser Source
-          │
-          ▼
-FastAPI / Jinja2 / WebSocket
-  ├─ /overlay     방송용 화면
-  ├─ /join        참가자 모바일 화면
-  ├─ /admin       운영자 화면
-  ├─ Twitch OAuth·Whisper
-  └─ SodaGift Products·Orders·LINK
+Twitch 방송 + OBS Browser Source
+              │
+              ▼
+Firebase Hosting + Firestore
+  ├─ /join        Twitch 로그인 · 국가 · 개인 결과
+  ├─ /admin       이벤트 시작 · 추첨 · 지급 상태
+  └─ /overlay     QR · 참여 인원 · 당첨 발표
+              │ 당첨자 승인
+              ▼
+Local Gift Bridge
+  ├─ SodaGift Sandbox API → 국가별 LINK URL
+  └─ Twitch Helix API     → 귓속말 전달 요청
 ```
 
-- Backend/Web: Python 3.12, FastAPI, Uvicorn, Jinja2
-- Realtime: WebSocket
-- External API: Twitch OAuth/Helix, SodaGift Biz Sandbox API
-- Initial prototype: Next.js, TypeScript
+브라우저에는 SodaGift API 키를 넣지 않습니다. 공개 Firestore에는 상품 정보와 암호화된 링크만 저장하고, 평문 수령 URL의 복호화는 참가자 또는 운영자 브라우저에서만 진행합니다.
 
-초기에는 `streamdrop-app`의 Next.js 오버레이로 방송 화면과 OBS 연결을 먼저 검증했습니다. 이후 제한된 해커톤 시간 안에 참여·추첨·외부 API를 한 서버로 통합하기 위해 최종 데모를 `raffle-app`의 FastAPI 구조로 전환했습니다.
+## 5. 데모 진행 순서
 
-## 6. 빠른 실행
+1. 로컬 지급 브리지를 실행합니다.
+2. Twitch 방송과 OBS 오버레이를 보여줍니다.
+3. 운영자가 **이벤트 시작**을 누르면 QR이 활성화됩니다.
+4. 참가자는 QR을 스캔하고 Twitch 로그인 → 국가 선택 → 참여를 완료합니다.
+5. 운영자가 **추첨하기**를 누르면 OBS와 참가자 화면에 결과가 표시됩니다.
+6. 당첨자의 화면에는 결과와 **선물 받기** 버튼이 함께 나타납니다.
+7. 당첨자가 버튼을 누르면 SodaGift LINK URL이 생성됩니다.
+8. Twitch API가 해당 URL의 귓속말 전달을 요청합니다.
+9. 당첨자는 SodaGift 사이트에서 상품을 선택한 뒤 주문을 완료합니다.
 
-### 요구 환경
+**완료 기준:** Twitch 로그인 → 국가 선택 → 추첨 → 당첨자 승인 → 실제 SodaGift URL 생성 → 수령 사이트 진입.
 
-- Python 3.10 이상 — macOS에서는 Python 3.12 권장
-- OBS Studio
-- 실제 연동 시 Twitch Developer 앱과 SodaGift Sandbox API 키
+## 6. 챌린지: Twitch 귓속말
 
-### 설치 및 실행
+Twitch Send Whisper API는 요청을 정상 접수하면 HTTP `204 No Content`를 반환합니다. 하지만 Twitch가 스팸이나 정책 위반 가능성을 감지하면 같은 `204`를 반환하면서 메시지를 실제 수신함에 전달하지 않는 **silent drop**이 발생할 수 있습니다.
+
+따라서 StreamDrop은 `전송됨` 대신 `Twitch 접수`로 상태를 표시하며, 귓속말을 보장 경로로 간주하지 않습니다.
+
+### 데모 대응
+
+- 참가자 화면의 **선물 받기/수령** 경로를 계속 유지합니다.
+- 운영자 화면에서 생성된 SodaGift URL을 확인할 수 있습니다.
+- 수신자는 발신 계정을 팔로우하거나 먼저 일반 귓속말을 보내 관계를 만듭니다.
+- 발신 계정은 전화번호 인증과 `user:manage:whispers` 권한을 사용합니다.
+- 귓속말은 보조 알림, 참가자 화면은 기본 수령 경로로 운영합니다.
+
+참고: [Twitch Whisper API](https://dev.twitch.tv/docs/chat/whispers/) · [Twitch 귓속말 설정](https://help.twitch.tv/s/article/how-to-use-whispers)
+
+## 7. 추가 기능: AI 선물 추천
+
+별도 브랜치 [feat/ai-gift-recommendation](https://github.com/Changjae-LE/socal-k-group-hackathon/tree/feat/ai-gift-recommendation)에는 낙첨자를 다시 참여 고객으로 연결하는 추천 기능이 구현되어 있습니다.
+
+```text
+Twitch 팔로우 채널·콘텐츠 카테고리
+                +
+참가 국가별 SodaGift 상품 카탈로그
+                ↓
+Claude 기반 Top 3 선물 추천 + 추천 이유
+                ↓
+낙첨자 참가 화면에 맞춤 상품 표시
+```
+
+- 모델: `claude-haiku-4-5`
+- 입력: 팔로우 채널, 콘텐츠 카테고리, 참가 국가, 국가별 상품 목록
+- 출력: 카탈로그 내부 상품 Top 3와 짧은 추천 이유
+- 안정성: AI 키가 없거나 호출·파싱에 실패하면 랜덤 3개 상품으로 폴백
+- 기대 효과: 낙첨 경험을 종료하지 않고 SodaGift 상품 탐색과 후속 구매로 전환
+
+## 8. StreamDrop의 비전과 SodaGift 시너지
+
+StreamDrop은 단발성 경품 발송 도구가 아니라, 라이브 참여를 국가별 상품 선택과 반복 주문으로 연결하는 캠페인 플랫폼을 목표로 합니다.
+
+### 현실적인 수익 구조
+
+- 주최자 대상 캠페인 생성·운영 이용료
+- 경품 주문 연계 수익 또는 SodaGift 제휴 마진
+- 반복 행사 계약과 브랜드별 운영 패키지
+- AI 추천을 활용한 낙첨자 후속 구매 전환
+
+### 적용 분야
+
+- **K-CON 및 K-pop 콘서트:** 현장·온라인 팬 퀴즈, 좌석 이벤트, 아티스트 라이브
+- **게임 출시 방송:** 미션 달성, 베타키·기프트카드 보상
+- **크리에이터 팬미팅:** 구독자 감사 추첨, 글로벌 팬 리워드
+- **스포츠 라이브:** 득점 예측, 하프타임 퀴즈, 스폰서 경품
+- **브랜드 라이브 커머스:** 시청 유지 이벤트, 구매 전환 쿠폰
+
+### SodaGift에 기대되는 효과
+
+- 라이브 이벤트마다 국가별 상품 주문이 반복적으로 발생
+- 기존 크리에이터·브랜드가 새로운 B2B 캠페인 고객으로 유입
+- 참여 → 수령 → 상품 선택 데이터를 활용한 카탈로그 최적화
+
+핵심 지표는 참여→수령 전환율, 이벤트당 주문액, 평균 지급 시간, 반복 캠페인 비율입니다.
+
+## 9. 실행과 설정
+
+### Firebase 공개 데모
+
+- Hosting 사이트: `hackathon-korean-team5`
+- `BASE_URL`: `https://hackathon-korean-team5.web.app/`
+- Twitch Redirect URL: `https://hackathon-korean-team5.web.app/join`
+- 예비 Redirect URL: `https://hackathon-korean-team5.web.app/join/callback`
+
+참가자는 반드시 Twitch OAuth로 로그인해야 합니다. OAuth 없는 로컬 참가자 또는 별도 닉네임 참여 경로는 제공하지 않습니다.
+
+### 로컬 지급 브리지
 
 ```bash
-git clone https://github.com/Changjae-LE/socal-k-group-hackathon.git
-cd socal-k-group-hackathon/raffle-app
-
+cd raffle-app
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env
 
-# API 키 없이 로컬 데모 계정 사용
-export DEBUG=1
-export ADMIN_TOKEN=streamdrop
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+# 현재 처리 대상만 확인
+python scripts/fulfill_firestore_winners.py --dry-run
+
+# 당첨 감지 → 참가자 승인 후 LINK 발급과 전달 요청
+python scripts/fulfill_firestore_winners.py
 ```
 
-실행 후 다음 주소를 엽니다.
+주요 환경변수:
 
-| 화면 | 주소 |
+| 이름 | 용도 |
 |---|---|
-| OBS 오버레이 | <http://127.0.0.1:8000/overlay> |
-| 운영자 | <http://127.0.0.1:8000/admin?token=streamdrop> |
-| 참가자 | <http://127.0.0.1:8000/join> |
+| `BASE_URL` | 공개 서비스 기준 URL (`https://hackathon-korean-team5.web.app/`) |
+| `TWITCH_CLIENT_ID` | Twitch OAuth 앱 ID |
+| `TWITCH_CLIENT_SECRET` | Twitch OAuth 앱 Secret |
+| `TWITCH_BOT_USER_ID` | 귓속말 발신 계정 ID |
+| `TWITCH_BOT_TOKEN` | `user:manage:whispers` 사용자 토큰 |
+| `SODAGIFT_API_KEY` | SodaGift Sandbox API 키 |
+| `SODAGIFT_BASE_URL` | SodaGift Sandbox API 주소 |
+| `ADMIN_TOKEN` | 운영자 화면 접근 토큰 |
 
-### 환경변수
+실제 API 키, 토큰, 평문 수령 URL은 GitHub에 커밋하지 않습니다.
 
-프로젝트는 실행 위치의 `.env`를 자동으로 읽습니다. 실제 값이나 API 키를 Git에 커밋하지 마세요.
+## 10. AI를 활용한 개발 과정
 
-| 이름 | 용도 | 기본값/비고 |
-|---|---|---|
-| `BASE_URL` | QR·OAuth·Claim에 사용할 공개 주소 | `http://localhost:8000` |
-| `ADMIN_TOKEN` | 운영자 화면 접근 토큰 | 데모 기본값 `streamdrop` |
-| `SECRET_KEY` | 참가자 세션 쿠키 서명 | 운영 환경에서 반드시 변경 |
-| `TWITCH_CLIENT_ID` | Twitch Developer 앱 ID | 실제 OAuth 시 필요 |
-| `TWITCH_CLIENT_SECRET` | Twitch 앱 Secret | 실제 OAuth 시 필요 |
-| `TWITCH_BOT_USER_ID` | 귓속말 발신 계정 ID | 선택 사항 |
-| `TWITCH_BOT_TOKEN` | `user:manage:whispers` 토큰 | 선택 사항 |
-| `SODAGIFT_API_KEY` | SodaGift Sandbox API 키 | 없으면 Mock Mode |
-| `SODAGIFT_BASE_URL` | SodaGift API 주소 | Sandbox 주소 사용 |
+- **개발 도구:** OpenAI Codex
+- **모델:** GPT-5 계열
+- **제품 AI:** Claude Haiku 4.5 기반 선물 추천
+- **활용 범위:** 아이디어 비교, 하루 범위 축소, UX·API 흐름 설계, 구현, 오류 진단, 테스트, 문서와 발표자료 작성
 
-## 7. OBS 및 휴대폰 연결
+워크플로는 **사람이 목표와 제약 정의 → AI가 설계·코드 초안 → 실제 API와 화면 실행 → 팀이 판단·피드백 → AI 수정 → E2E 재검증**의 짧은 반복으로 운영했습니다.
 
-### OBS
+AI가 특히 잘한 부분:
 
-1. OBS에서 **소스 추가 → 브라우저**를 선택합니다.
-2. URL에 `http://127.0.0.1:8000/overlay`를 입력합니다.
-3. 권장 크기는 `1920 × 1080`입니다.
-4. 연결 실패 시 서버가 실행 중인지 확인하고 Browser Source 캐시를 새로고침합니다.
+- 방대한 아이디어를 하루 안에 시연 가능한 핵심 경로로 축소
+- Twitch·Firebase·SodaGift 사이의 상태와 실패 조건 정리
+- Mock Mode, 직접 수령 URL 등 데모 폴백 설계
+- 구현 상태와 README·PPT 메시지의 정합성 확인
 
-### 휴대폰
+사람이 반드시 담당한 부분:
 
-`localhost`와 `127.0.0.1`은 해당 기기 자신을 뜻하므로 휴대폰에서는 Mac 서버에 연결되지 않습니다. 다음 중 하나를 사용합니다.
-
-- 같은 Wi-Fi: `BASE_URL=http://<Mac의 로컬 IP>:8000`
-- 외부 네트워크: Cloudflare Tunnel 등으로 발급한 HTTPS 주소
-
-Twitch OAuth Redirect URL에는 `{BASE_URL}/join/callback`을 정확히 등록해야 합니다.
-
-## 8. 3분 데모 시나리오
-
-1. Twitch 방송과 OBS 오버레이를 보여줍니다.
-2. 운영자가 **이벤트 시작**을 누르면 QR이 활성화됩니다.
-3. 휴대폰 3대 이상에서 로그인하고 국가를 선택합니다.
-4. OBS와 운영자 화면의 참가자 수가 증가하는 것을 확인합니다.
-5. 운영자가 당첨 인원을 설정하고 **추첨**을 누릅니다.
-6. OBS에서 당첨자가 발표되고 각 휴대폰에는 당첨·미당첨 결과가 구분됩니다.
-7. 당첨자가 **선물 받기**를 누르면 실제 SodaGift LINK가 Twitch 귓속말로 전송됩니다.
-8. 이벤트를 초기화하고 전체 흐름을 한 번 더 재현합니다.
-
-**데모 완료 기준:** 휴대폰 3대 참여 → 1명 이상 추첨 → 당첨자에게만 LINK 노출 → 초기화 후 재실행.
-
-## 9. 비즈니스 모델과 SodaGift 기여
-
-StreamDrop은 게임 출시, K-pop 라이브, 스폰서십, 팬 감사 이벤트를 대상으로 캠페인 이용료와 경품 주문액을 결합할 수 있습니다.
-
-- 크리에이터·브랜드: 국가별 지급 운영 비용 절감, 실시간 참여율 향상
-- 시청자: 주소나 이메일 공개 없이 즉시 보상 수령
-- SodaGift: 반복 라이브 캠페인마다 국가별 상품 주문과 신규 B2B 고객 발생
-
-주요 지표는 이벤트당 경품 주문액, 참여 대비 수령 성공률, 평균 지급 시간, 반복 캠페인 비율입니다.
-
-## 10. AI 활용 방식
-
-### 사용 도구와 모델
-
-- **도구:** OpenAI Codex
-- **모델:** GPT-5 계열 모델
-- **활용 범위:** 아이디어 구체화, 해커톤 범위 축소, 화면·API 흐름 설계, 코드 초안, 오류 진단, 테스트 항목 및 발표 자료·문서 작성
-
-### 프롬프트·에이전트·워크플로 설계
-
-별도 병렬 에이전트를 무조건 늘리기보다, 하나의 Codex 작업 안에서 아래 역할을 순차적으로 전환했습니다.
-
-1. **기획 역할:** Twitch 글로벌 팬 이벤트의 문제와 SodaGift LINK의 강점 정의
-2. **설계 역할:** 참가자·운영자·OBS의 상태와 API 경계 정의
-3. **구현 역할:** 가장 작은 데모 단위로 화면과 서버 기능 구현
-4. **QA 역할:** 서버 연결, 모바일 접속, API 실패, 중복 주문 등 실패 조건 점검
-5. **문서 역할:** 실제 코드와 발표 메시지가 일치하는지 다시 검토
-
-AI에 제공한 대표 지시는 다음과 같은 형태였습니다.
-
-```text
-Twitch 방송에서 QR로 참여하고, 당첨자에게만 SodaGift LINK를 전달하는
-하루짜리 4인 팀 데모를 설계한다. 실제 동작을 최우선으로 하고,
-외부 API 실패 시에도 시연 가능한 폴백을 포함한다.
-```
-
-```text
-참가자·운영자·OBS 화면의 전체 순서를 정의하고,
-동시에 개발할 수 있는 작업과 통합 완료 기준을 구체화한다.
-```
-
-```text
-서버 연결 실패를 재현하고 localhost, 로컬 IP, 터널을 구분해 진단한다.
-API 키나 수령 링크는 브라우저·OBS·GitHub에 노출하지 않는다.
-```
-
-워크플로는 **사람의 목표·제약 설정 → AI 초안 → 실제 실행·오류 확인 → 사람의 선택과 피드백 → AI 수정 → 다시 실행 검증**의 짧은 반복으로 운영했습니다.
-
-### AI가 잘한 부분
-
-- 방대한 아이디어를 하루 안에 시연 가능한 핵심 흐름으로 줄였습니다.
-- 정상 경로뿐 아니라 Mock Mode, 로컬 IP, Tunnel 등 데모 폴백을 함께 설계했습니다.
-- 화면·API·실시간 상태·외부 서비스 사이의 누락을 빠르게 찾아 체크리스트로 만들었습니다.
-- 문서, 발표 자료, 구현 상태를 반복해서 비교할 수 있었습니다.
-
-### AI가 부족했던 부분과 사람의 역할
-
-- 초기 PPT의 Next.js 중심 구조와 최종 FastAPI 구현 사이에 차이가 생겼습니다. 사람의 시간·구현 판단을 반영해 통합 서버 구조로 전환했고, README에서는 실제 구현을 기준으로 바로잡았습니다.
-- AI는 실제 Twitch 계정 정책, OBS 방송 품질, 현장 Wi-Fi, 휴대폰별 동작을 대신 검증할 수 없습니다. 실기기 리허설과 최종 판단은 팀이 담당합니다.
-- SodaGift 상품·잔액·주문 결과는 Sandbox의 실제 상태에 따라 달라지므로, API 응답과 비용을 사람이 확인해야 합니다.
-- 생성된 코드와 설명에는 오류가 포함될 수 있어 서버 실행, HTTP 응답, 비밀정보 노출 여부를 사람이 검토했습니다.
-
-AI는 결과를 대신 결정하는 주체가 아니라, 팀의 가설을 빠르게 구현하고 검증 가능하게 만드는 협업 도구로 사용했습니다.
+- 실제 Twitch 계정 정책과 스팸 필터 확인
+- SodaGift Sandbox 주문과 비용 검증
+- OBS, 현장 네트워크, 실기기 리허설
+- 생성 코드의 보안과 최종 제품 판단
 
 ## 11. 심사 기준 대응
 
 | 기준 | StreamDrop의 대응 |
 |---|---|
-| 아이디어 50% | 글로벌 디지털 경품 지급 문제를 명확히 정의하고 Twitch 실시간성에 SodaGift LINK를 결합 |
-| 완성품 30% | QR 참여, 운영자 확인, 실시간 추첨, 개인 결과, 선물 수령까지 실행 가능한 데모 제공 |
-| PT 20% | 3분 데모 시나리오, 폴백 전략, AI 도구·모델·워크플로·한계를 구체적으로 공개 |
+| 아이디어 50% | 글로벌 팬 지급 문제에 Twitch의 실시간성과 SodaGift LINK를 결합 |
+| 완성품 30% | Twitch 로그인, 국가 선택, OBS 추첨, 당첨자 승인, 실제 수령 URL까지 동작 |
+| PT 20% | 실제 데모, 귓속말 한계와 대응, AI 활용 과정, 수익 비전을 명확히 설명 |
 
-## 12. 한계와 다음 단계
+## 12. 데모 이후의 다음 단계
 
-현재 버전은 해커톤 데모에 맞춰 단일 프로세스·단일 이벤트·인메모리 상태로 동작합니다.
-
-- Redis·데이터베이스를 사용한 이벤트 상태 영속화
-- 캠페인별 예산, 상품 가격대, 국가 허용 목록 설정
-- 주문·수령 링크의 암호화 저장과 접근 감사
-- Twitch EventSub·채팅 명령 연동
-- 재시도 큐, 환불·실패 주문 처리, 관리자 권한 강화
-- 참여율·수령률·캠페인 반복률 분석 대시보드
-- 다국어·접근성·개인정보 처리 정책 보완
-
-## 13. 4인 팀 협업 제안
-
-| 담당 | 데모 당일 핵심 책임 |
-|---|---|
-| PM/UX | 문제·스토리·3분 발표, 참가자 화면 흐름, 범위 결정 |
-| Front/OBS | Overlay·Join·Admin 화면과 Twitch 송출 연출 |
-| API/AI | 이벤트 상태, Twitch·SodaGift 연동, AI 활용 과정 정리 |
-| QA | 실기기·네트워크·중복 주문·폴백 검증, 리허설 진행 |
-
-통합 시점에는 역할과 관계없이 전원이 **참여 → 추첨 → 개인 LINK → 초기화** 전체 흐름을 함께 확인합니다.
+- Firebase Authentication과 서버 전용 권한으로 공개 데모 규칙 강화
+- 지속형 주문·재시도 큐와 지급 감사 로그
+- Twitch EventSub 기반 전달 상태 보완과 다채널 알림
+- 캠페인별 예산·국가·상품 가격대 설정
+- AI 선물 추천 브랜치 통합과 추천 성과 측정
+- 다국어, 접근성, 개인정보 처리 정책 보완
 
 ---
 
-StreamDrop은 “방송 화면의 QR이 전 세계 팬의 선물로 이어지는 순간”을 3분 안에 보여주는 것을 목표로 합니다.
+**StreamDrop × SodaGift — 글로벌 팬 리워드의 가장 짧은 경로**
