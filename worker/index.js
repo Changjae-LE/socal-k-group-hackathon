@@ -83,6 +83,40 @@ async function createLinkGift(env, nickname, country, refId) {
   throw new Error("gift link not ready");
 }
 
+async function sendWhisper(env, toUserId, message) {
+  if (!env.TWITCH_BOT_TOKEN || !env.TWITCH_BOT_USER_ID || !env.TWITCH_CLIENT_ID) {
+    throw new Error("missing TWITCH_BOT_TOKEN, TWITCH_BOT_USER_ID, or TWITCH_CLIENT_ID secret");
+  }
+  if (!/^\d+$/.test(String(toUserId || ""))) {
+    throw new Error("toUserId required");
+  }
+  const url = new URL("https://api.twitch.tv/helix/whispers");
+  url.searchParams.set("from_user_id", String(env.TWITCH_BOT_USER_ID));
+  url.searchParams.set("to_user_id", String(toUserId));
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + env.TWITCH_BOT_TOKEN,
+      "Client-Id": env.TWITCH_CLIENT_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ message: String(message || "").slice(0, 500) }),
+  });
+  if (res.status !== 204 && res.status !== 200) {
+    const errText = await res.text();
+    throw new Error(`twitch ${res.status}: ${errText.slice(0, 200)}`);
+  }
+}
+
+function whisperMessage(body) {
+  const nick = body.nickname || "winner";
+  const product = body.productName || "gift";
+  const link = body.giftLink || "";
+  let msg = `StreamDrop: ${nick}, you won! Claim your ${product}: ${link} (Do not share this link.)`;
+  if (msg.length > 500) msg = `StreamDrop: you won! Claim: ${link}`.slice(0, 500);
+  return msg;
+}
+
 export default {
   async fetch(req, env) {
     if (req.method === "OPTIONS") {
@@ -94,15 +128,27 @@ export default {
     if ((req.headers.get("x-admin-token") || "") !== ADMIN) {
       return cors(Response.json({ error: "forbidden" }, { status: 403 }));
     }
-    if (!env.SODAGIFT_API_KEY) {
-      return cors(Response.json({ error: "missing SODAGIFT_API_KEY secret" }, { status: 500 }));
-    }
 
     let body = {};
     try {
       body = await req.json();
     } catch (_) {
       body = {};
+    }
+
+    const path = new URL(req.url).pathname.replace(/\/$/, "");
+    const isWhisper = body.action === "whisper" || path.endsWith("/whisper");
+    if (isWhisper) {
+      try {
+        await sendWhisper(env, body.toUserId, whisperMessage(body));
+        return cors(Response.json({ ok: true }));
+      } catch (err) {
+        return cors(Response.json({ error: err.message || "whisper failed" }, { status: 502 }));
+      }
+    }
+
+    if (!env.SODAGIFT_API_KEY) {
+      return cors(Response.json({ error: "missing SODAGIFT_API_KEY secret" }, { status: 500 }));
     }
     const nickname = body.nickname || "";
     const country = body.country || "";

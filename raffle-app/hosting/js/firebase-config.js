@@ -12,5 +12,5 @@ window.STREAMDROP_TWITCH_REDIRECT_URI = "https://hackathon-korean.web.app/join";
 // Public Twitch Client ID only. Register Redirect URL:
 // https://hackathon-korean.web.app/join
 window.STREAMDROP_TWITCH_CLIENT_ID = "z5t5pnz08uh152c9kiinrw5rb8dyfo";
-// Paste your live Worker URL (the one that shows {"error":"POST only"}).
-window.STREAMDROP_GIFT_API = "https://socal-k-group-hackathon.wildkid123456.workers.dev";
+// Live Worker (streamdrop-gift). Git Worker socal-k-group-hackathon is unused.
+window.STREAMDROP_GIFT_API = "https://streamdrop-gift.wildkid123456.workers.dev";

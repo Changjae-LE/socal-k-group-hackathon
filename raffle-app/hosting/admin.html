@@ -17,6 +17,7 @@
     &nbsp; 실시간: <span class="badge ok">Firestore</span>
     &nbsp; Twitch: <span id="twitch-badge" class="badge dim">미설정</span>
     &nbsp; SodaGift: <span id="soda-badge" class="badge dim">미연결</span>
+    &nbsp; 귓속말: <span id="whisper-badge" class="badge dim">미연결</span>
   </div>
 
   <div class="controls">
@@ -43,8 +44,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js?v=10"></script>
-<script src="/js/event.js?v=10"></script>
+<script src="/js/firebase-config.js?v=11"></script>
+<script src="/js/event.js?v=11"></script>
 <script>
 const token = new URLSearchParams(location.search).get("token");
 if (token !== window.STREAMDROP_ADMIN_TOKEN) {
@@ -119,6 +120,28 @@ async function orderSodaGift(winner, eventId) {
   return body;
 }
 
+async function sendWhisper(winner) {
+  const giftApi = (window.STREAMDROP_GIFT_API || "").trim();
+  if (!giftApi) throw new Error("Worker URL is empty.");
+  const res = await fetch(giftApi, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-admin-token": window.STREAMDROP_ADMIN_TOKEN,
+    },
+    body: JSON.stringify({
+      action: "whisper",
+      toUserId: winner.uid,
+      nickname: winner.nickname,
+      productName: winner.productName,
+      giftLink: winner.giftLink,
+    }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `whisper ${res.status}`);
+  return body;
+}
+
 document.getElementById("btn-draw").onclick = async () => {
   if (!(window.STREAMDROP_GIFT_API || "").trim()) {
     alert("SodaGift Worker가 아직 연결되지 않았습니다.\nCloudflare에서 Worker를 배포한 뒤 workers.dev URL을 넣어 주세요.");
@@ -155,6 +178,19 @@ document.getElementById("btn-draw").onclick = async () => {
       w.productName = err.message || "주문 실패";
       alert("SodaGift 주문 실패: " + (err.message || err));
     }
+    if (w.giftLink && /^\d+$/.test(String(w.uid))) {
+      w.whisperStatus = "sending";
+      await sdEventRef().set({ winners, updatedAt: Date.now() }, { merge: true });
+      try {
+        await sendWhisper(w);
+        w.whisperStatus = "sent";
+      } catch (err) {
+        console.error(err);
+        w.whisperStatus = "failed";
+      }
+    } else {
+      w.whisperStatus = "skipped";
+    }
     await sdEventRef().set({ winners, updatedAt: Date.now() }, { merge: true });
   }
 };
@@ -171,12 +207,17 @@ if (token === window.STREAMDROP_ADMIN_TOKEN) {
     twitchBadge.className = "badge ok";
   }
   const sodaBadge = document.getElementById("soda-badge");
+  const whisperBadge = document.getElementById("whisper-badge");
   if ((window.STREAMDROP_GIFT_API || "").trim()) {
     sodaBadge.textContent = "Worker 연결됨";
     sodaBadge.className = "badge ok";
+    whisperBadge.textContent = "Worker 연결됨";
+    whisperBadge.className = "badge ok";
   } else {
     sodaBadge.textContent = "미연결";
     sodaBadge.className = "badge err";
+    whisperBadge.textContent = "미연결";
+    whisperBadge.className = "badge err";
   }
   sdEnsureEvent().then(() => sdListenEvent(render));
 }
