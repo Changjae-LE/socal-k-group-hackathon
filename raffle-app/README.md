@@ -65,13 +65,30 @@ cloudflared tunnel --url http://localhost:8000
 ## SodaGift 설정 (sandbox)
 1. sandbox 계정 → Settings > Developer Settings에서 API 키 발급 (`sodagift_test_...`)
 2. `.env`의 `SODAGIFT_API_KEY`에 설정 → mock에서 실연동으로 자동 전환
+
 - base URL: `https://biz-sandbox-api.sodagift.com`, 헤더 `SODA-API-KEY`
 - 흐름: `GET /v1/products?country_code=XX&delivery_method=LINK` → 최저가 ON_SALE 상품 → `POST /v1/orders`(LINK, 멱등키) → `GET /v1/orders/{id}` 폴링 → `order_items[].delivery.link`
 - 발급된 링크는 `orders.log`에도 기록됨 (지급 사고 대비)
-- ⚠️ 수령 링크 보유자 = 수령자. overlay/admin에 절대 노출하지 않음 (참가자 본인 WS·귓속말로만 전달)
+- ⚠️ 수령 링크 보유자 = 수령자. API 키와 평문 링크는 Hosting/Firestore에 저장하지 않습니다.
+
+### 공개 Firebase 당첨자에게 실제 LINK 지급
+
+공개 운영자 화면에서 추첨하기 전에 로컬 Mac에서 지급 브리지를 실행하고 계속 켜 둡니다.
+
+```bash
+# 주문을 만들지 않고 현재 처리 대상만 확인
+python scripts/fulfill_firestore_winners.py --dry-run
+
+# Firestore 당첨 감지 → SodaGift 주문 → 암호화된 링크 전달
+python scripts/fulfill_firestore_winners.py
+```
+
+참가자 브라우저는 참여 시 수령용 공개키를 Firestore에 등록하고 개인키를 해당 기기에만 보관합니다. 지급 브리지는 SodaGift LINK를 암호화해 Firestore에 저장하므로 당첨자가 참여했던 기기만 링크를 열 수 있습니다. `--once`를 사용하면 당첨자 한 명만 처리하고 종료합니다.
+
+현재 해커톤 Firestore 규칙은 공개 데모용입니다. 운영 서비스에서는 Firebase Authentication과 서버 전용 자격 증명으로 교체해야 합니다.
 
 ## 데모 시나리오
-1. `/admin` → "이벤트 시작" → 오버레이에 QR 표시
+1. 지급 브리지 실행 → 공개 `/admin`에서 "이벤트 시작" → 오버레이에 QR 표시
 2. 관객이 QR 스캔 → Twitch 로그인 → 국가 선택 → 참여 (오버레이 카운트 상승)
-3. "추첨" 클릭 → 오버레이 당첨자 발표 + 각자 폰에 당첨/낙첨 표시
-4. 당첨자 폰에 수령 버튼 등장 (+ 귓속말 도착)
+3. "추첨" 클릭 → 오버레이 당첨자 발표 + 지급 브리지가 SodaGift LINK 발급
+4. 당첨자 폰이 암호화된 링크를 복호화 → 실제 "선물 수령하기" 버튼 표시

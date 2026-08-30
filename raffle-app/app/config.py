@@ -22,6 +22,12 @@ SODAGIFT_API_KEY = os.getenv("SODAGIFT_API_KEY", "")
 SODAGIFT_BASE_URL = os.getenv("SODAGIFT_BASE_URL", "https://biz-sandbox-api.sodagift.com").rstrip("/")
 GIFT_SENDER_NAME = os.getenv("GIFT_SENDER_NAME", "StreamDrop")
 
+# 공개 Firestore 이벤트와 로컬 SodaGift 지급 브리지를 연결한다.
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "hackathon-korean")
+FIREBASE_WEB_API_KEY = os.getenv("FIREBASE_WEB_API_KEY", "AIzaSyDLJZCsHtidnHpOEeEUqT1aX1kdYO8Yz7A")
+FIRESTORE_EVENT_DOCUMENT = os.getenv("FIRESTORE_EVENT_DOCUMENT", "events/live").strip("/")
+FIRESTORE_POLL_INTERVAL = float(os.getenv("FIRESTORE_POLL_INTERVAL", "1.5"))
+
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "streamdrop")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
 DEBUG = os.getenv("DEBUG", "0") == "1"

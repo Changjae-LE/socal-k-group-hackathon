@@ -65,6 +65,7 @@ async function sdWriteParticipant(uid, fields) {
       country: fields.country || prev.country || "",
       joinedAt: prev.joinedAt || Date.now(),
       twitch: Boolean(fields.twitch || prev.twitch),
+      claimPublicKey: fields.claimPublicKey || prev.claimPublicKey || null,
     };
     participants[uid] = next;
     const status = next.country && data.status !== "drawn" ? "open" : (data.status || "idle");

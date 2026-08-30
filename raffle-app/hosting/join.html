@@ -62,7 +62,8 @@
     <div class="result-emoji">🎉</div>
     <h2>축하합니다, 당첨!</h2>
     <p style="margin:10px 0 4px" id="win-product">선물을 준비하고 있어요...</p>
-    <a id="gift-btn" class="btn accent" href="#" target="_blank">🎁 선물 수령하기</a>
+    <a id="gift-btn" class="btn accent hidden" target="_blank" rel="noopener">🎁 선물 수령하기</a>
+    <p class="gift-note" id="gift-status">안전한 수령 링크를 준비하고 있어요...</p>
     <p class="gift-note">이 링크는 본인 전용입니다. 절대 공유하지 마세요.</p>
   </div>
 
@@ -75,8 +76,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js?v=4"></script>
-<script src="/js/event.js?v=4"></script>
+<script src="/js/firebase-config.js?v=5"></script>
+<script src="/js/event.js?v=5"></script>
 <script>
 const SESSION_KEY = "sd_session";
 const COUNTRIES = { KR:"🇰🇷 South Korea", US:"🇺🇸 United States", JP:"🇯🇵 Japan", CA:"🇨🇦 Canada", AU:"🇦🇺 Australia", GB:"🇬🇧 United Kingdom", FR:"🇫🇷 France", SG:"🇸🇬 Singapore", HK:"🇭🇰 Hong Kong", TW:"🇹🇼 Taiwan", PH:"🇵🇭 Philippines", TH:"🇹🇭 Thailand", VN:"🇻🇳 Vietnam", MY:"🇲🇾 Malaysia", ID:"🇮🇩 Indonesia", IN:"🇮🇳 India", CN:"🇨🇳 China" };
@@ -102,11 +103,60 @@ function saveSession(data) {
   localStorage.setItem(SESSION_KEY, JSON.stringify(data));
 }
 
+function bytesFromBase64Url(value) {
+  const base64 = value.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((value.length + 3) % 4);
+  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+}
+
+async function ensureClaimKeys(session) {
+  if (session.claimPublicKey && session.claimPrivateKey) return session;
+  if (!window.crypto || !window.crypto.subtle) {
+    throw new Error("이 브라우저에서는 안전한 링크 수령을 사용할 수 없습니다.");
+  }
+  const pair = await crypto.subtle.generateKey({
+    name: "RSA-OAEP",
+    modulusLength: 2048,
+    publicExponent: new Uint8Array([1, 0, 1]),
+    hash: "SHA-256",
+  }, true, ["encrypt", "decrypt"]);
+  session.claimPublicKey = await crypto.subtle.exportKey("jwk", pair.publicKey);
+  session.claimPrivateKey = await crypto.subtle.exportKey("jwk", pair.privateKey);
+  saveSession(session);
+  return session;
+}
+
+async function decryptGiftLink(session, encrypted) {
+  if (!session.claimPrivateKey) throw new Error("이 기기의 수령 키를 찾을 수 없습니다.");
+  const privateKey = await crypto.subtle.importKey(
+    "jwk",
+    session.claimPrivateKey,
+    { name: "RSA-OAEP", hash: "SHA-256" },
+    false,
+    ["decrypt"],
+  );
+  const rawKey = await crypto.subtle.decrypt(
+    { name: "RSA-OAEP" },
+    privateKey,
+    bytesFromBase64Url(encrypted.wrappedKey),
+  );
+  const aesKey = await crypto.subtle.importKey("raw", rawKey, "AES-GCM", false, ["decrypt"]);
+  const clear = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: bytesFromBase64Url(encrypted.iv) },
+    aesKey,
+    bytesFromBase64Url(encrypted.ciphertext),
+  );
+  const link = new TextDecoder().decode(clear);
+  if (!/^https:\/\//i.test(link)) throw new Error("수령 링크 형식이 올바르지 않습니다.");
+  return link;
+}
+
 async function registerOnPublicEvent(session) {
+  await ensureClaimKeys(session);
   const written = await sdWriteParticipant(session.uid, {
     nickname: session.nick,
     country: session.country || "",
     twitch: session.twitch,
+    claimPublicKey: session.claimPublicKey,
   });
   session.eventId = written.eventId;
   saveSession(session);
@@ -187,7 +237,7 @@ document.getElementById("btn-enter").onclick = async () => {
   }
 };
 
-function renderFromEvent(data) {
+async function renderFromEvent(data) {
   window.__eventData = data;
   const session = loadSession();
   if (!session) { show("sec-login"); return; }
@@ -206,9 +256,28 @@ function renderFromEvent(data) {
 
   if (data.status === "drawn" && (joined || waiting || winner)) {
     if (winner) {
-      document.getElementById("win-product").textContent = winner.productName || "StreamDrop Gift Card";
-      document.getElementById("gift-btn").href = winner.giftLink || `${sdPublicUrl()}/claim?id=${session.uid}`;
       show("sec-win");
+      const product = document.getElementById("win-product");
+      const button = document.getElementById("gift-btn");
+      const status = document.getElementById("gift-status");
+      product.textContent = winner.productName || "선물을 준비하고 있어요...";
+      button.classList.add("hidden");
+      button.removeAttribute("href");
+      status.classList.remove("hidden");
+      status.textContent = winner.status === "failed"
+        ? "수령 링크 발급에 실패했습니다. 운영자에게 알려주세요."
+        : "안전한 수령 링크를 준비하고 있어요...";
+      if (winner.encryptedGift) {
+        try {
+          button.href = await decryptGiftLink(session, winner.encryptedGift);
+          button.classList.remove("hidden");
+          status.classList.add("hidden");
+          showError("");
+        } catch (err) {
+          console.error(err);
+          status.textContent = "이 기기에서 수령 링크를 열 수 없습니다. 참여했던 기기를 사용해 주세요.";
+        }
+      }
     } else if (joined) {
       show("sec-lose");
     } else {
@@ -224,13 +293,19 @@ function renderFromEvent(data) {
 if (sdSendTwitchReturnToPublicJoin()) {
   // Twitch came back to localhost or another host; bounce to public /join.
 } else sdEnsureEvent()
-  .then(() => consumeTwitchHash())
+  .then(async () => {
+    const consumed = await consumeTwitchHash();
+    if (!consumed) {
+      const session = loadSession();
+      if (session) await registerOnPublicEvent(session);
+    }
+  })
   .catch((err) => {
     console.error(err);
     showError(err.message || "Twitch 로그인에 실패했습니다.");
   })
   .finally(() => {
-    sdListenEvent(renderFromEvent, () => showError("실시간 연결이 끊겼습니다. 페이지를 새로고침해 주세요."));
+    sdListenEvent((data) => { void renderFromEvent(data); }, () => showError("실시간 연결이 끊겼습니다. 페이지를 새로고침해 주세요."));
   });
 </script>
 </body>

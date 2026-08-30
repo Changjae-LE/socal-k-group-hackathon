@@ -107,10 +107,10 @@ document.getElementById("btn-draw").onclick = async () => {
     uid: p.uid,
     nickname: p.nickname,
     country: p.country,
-    productName: "StreamDrop Gift Card",
-    giftLink: `${sdPublicUrl()}/claim?id=${p.uid}`,
-    orderId: `mock${p.uid.slice(-6)}`,
-    status: "link_ready",
+    productName: "",
+    giftLink: "",
+    orderId: "",
+    status: "pending",
     whisperStatus: "skipped",
   }));
   await sdEventRef().set({ status: "drawn", winners, updatedAt: Date.now() }, { merge: true });
