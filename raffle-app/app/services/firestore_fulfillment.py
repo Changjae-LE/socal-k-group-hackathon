@@ -26,8 +26,7 @@ from app.services import sodagift, twitch
 
 log = logging.getLogger("streamdrop.firestore_fulfillment")
 
-GiftProvider = Callable[[str, str, str, int], Awaitable[dict[str, str]]]
-OptionsProvider = Callable[[str], Awaitable[list[dict[str, Any]]]]
+GiftProvider = Callable[[str, str, str, int | None], Awaitable[dict[str, str]]]
 WhisperProvider = Callable[[str, str], Awaitable[None]]
 
 
@@ -200,7 +199,7 @@ def _is_placeholder(winner: dict[str, Any]) -> bool:
 
 
 def fulfillment_candidates(data: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return winners that need options or have explicitly approved an order."""
+    """Return winners that requested a gift or approved a legacy product choice."""
     if data.get("status") != "drawn":
         return []
     participants = data.get("participants") or {}
@@ -210,12 +209,14 @@ def fulfillment_candidates(data: dict[str, Any]) -> list[dict[str, Any]]:
         participant = participants.get(uid) or {}
         status = winner.get("status")
         has_approved_product = bool(winner.get("selectedProductId"))
-        processable = status == "pending" or (
+        processable = status == "claim_requested" or (
             status == "order_approved" and has_approved_product
         )
         if (
             uid
+            and uid.isdigit()
             and processable
+            and participant.get("twitch") is True
             and not winner.get("encryptedGift")
             and participant.get("claimPublicKey")
         ):
@@ -224,7 +225,7 @@ def fulfillment_candidates(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 async def reset_failed_winners(store: FirestoreEventStore) -> int:
-    """Move failed, unfulfilled winners back to pending only on explicit request."""
+    """Retry a failed user-requested claim only on explicit operator request."""
     for _ in range(4):
         snapshot = await store.get_event()
         if not snapshot or snapshot.data.get("status") != "drawn":
@@ -234,7 +235,7 @@ async def reset_failed_winners(store: FirestoreEventStore) -> int:
         for winner in winners:
             if winner.get("status") == "failed" and not winner.get("encryptedGift"):
                 winner["status"] = (
-                    "order_approved" if winner.get("selectedProductId") else "pending"
+                    "order_approved" if winner.get("selectedProductId") else "claim_requested"
                 )
                 winner.pop("error", None)
                 reset_count += 1
@@ -270,7 +271,6 @@ async def _mutate_winner(
 async def fulfill_once(
     store: FirestoreEventStore,
     gift_provider: GiftProvider = sodagift.get_gift_link,
-    options_provider: OptionsProvider = sodagift.get_gift_options,
     whisper_provider: WhisperProvider = twitch.send_whisper,
     dry_run: bool = False,
 ) -> int:
@@ -289,33 +289,11 @@ async def fulfill_once(
     participant = (snapshot.data.get("participants") or {})[uid]
     country = str(candidate.get("country") or participant.get("country") or "")
 
-    if candidate.get("status") == "pending":
-        try:
-            options = await options_provider(country)
-            if not options:
-                raise RuntimeError(f"no gift options available for country {country}")
-        except Exception as exc:
-            def mark_option_failed(winner: dict[str, Any]) -> None:
-                winner["status"] = "failed"
-                winner["error"] = str(exc)[:160]
-
-            await _mutate_winner(store, event_id, uid, mark_option_failed)
-            raise
-
-        def mark_choice_required(winner: dict[str, Any]) -> None:
-            winner["status"] = "choice_required"
-            winner["giftOptions"] = options
-            winner.pop("selectedProductId", None)
-            winner.pop("selectedProductName", None)
-            winner.pop("orderApprovedAt", None)
-            winner.pop("error", None)
-
-        if not await _mutate_winner(store, event_id, uid, mark_choice_required):
-            return 0
-        log.info("SodaGift choices ready for winner %s", uid)
-        return 1
-
-    product_id = int(candidate["selectedProductId"])
+    product_id = (
+        int(candidate["selectedProductId"])
+        if candidate.get("selectedProductId")
+        else None
+    )
     public_key = participant["claimPublicKey"]
 
     def mark_ordering(winner: dict[str, Any]) -> None:

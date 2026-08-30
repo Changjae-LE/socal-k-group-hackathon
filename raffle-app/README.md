@@ -1,7 +1,7 @@
 # 🎁 StreamDrop
 
 라이브 방송(Twitch) 시청자 대상 실시간 글로벌 기프트 추첨 MVP.
-QR 스캔 → Twitch 로그인 → 참여 → 추첨 → SodaGift 상품 선택·주문 승인 → Twitch 귓속말 수령.
+QR 스캔 → Twitch 로그인 → 참여 → 추첨 → 선물 받기 → SodaGift LINK 주문 → Twitch 귓속말 수령.
 
 ## 공개 Hosting (Firebase, 무료)
 
@@ -62,7 +62,7 @@ cloudflared tunnel --url http://localhost:8000
 2. `.env`의 `SODAGIFT_API_KEY`에 설정 → mock에서 실연동으로 자동 전환
 
 - base URL: `https://biz-sandbox-api.sodagift.com`, 헤더 `SODA-API-KEY`
-- 흐름: `GET /v1/products?country_code=XX&delivery_method=LINK` → 참가자에게 선택지 표시 → 참가자 승인 → `POST /v1/orders`(LINK, 멱등키) → `GET /v1/orders/{id}` 폴링 → `order_items[].delivery.link`
+- 흐름: 당첨자가 **선물 받기** 승인 → `GET /v1/products?country_code=XX&delivery_method=LINK` → 국가별 기본 상품 자동 선택 → `POST /v1/orders`(LINK, 멱등키) → `GET /v1/orders/{id}` 폴링 → `order_items[].delivery.link`를 Twitch 귓속말로 전송
 - `orders.log`에는 주문 식별 정보만 기록하며 수령 URL은 평문으로 저장하지 않음
 - ⚠️ 수령 링크 보유자 = 수령자. API 키와 평문 링크는 Hosting/Firestore에 저장하지 않습니다.
 
@@ -81,13 +81,13 @@ python scripts/fulfill_firestore_winners.py
 python scripts/fulfill_firestore_winners.py --once --retry-failed
 ```
 
-참가자 브라우저는 참여 시 수령용 공개키를 Firestore에 등록하고 개인키를 해당 기기에만 보관합니다. 지급 브리지는 먼저 안전한 상품 정보만 게시하며 이 단계에서는 주문하지 않습니다. 당첨자가 상품을 선택하고 “선택한 선물 받기”를 누른 후에만 주문하고, SodaGift LINK를 암호화해 Firestore에 저장합니다. `--once`는 한 단계만 처리하므로 데모 운영에는 지급 브리지를 계속 실행하는 방식을 권장합니다.
+참가자 브라우저는 참여 시 수령용 공개키를 Firestore에 등록하고 개인키를 해당 기기에만 보관합니다. 지급 브리지는 당첨 직후에는 주문하지 않습니다. 당첨자가 “선물 받기”를 누른 뒤에만 국가별 기본 상품을 자동 선택하고 SodaGift LINK 주문을 생성해 실제 URL을 Twitch 귓속말로 전송합니다. `--once`는 한 건만 처리하므로 데모 운영에는 지급 브리지를 계속 실행하는 방식을 권장합니다.
 
 현재 해커톤 Firestore 규칙은 공개 데모용입니다. 운영 서비스에서는 Firebase Authentication과 서버 전용 자격 증명으로 교체해야 합니다.
 
 ## 데모 시나리오
 1. 지급 브리지 실행 → 공개 `/admin`에서 "이벤트 시작" → 오버레이에 QR 표시
 2. 관객이 QR 스캔 → Twitch 로그인 → 국가 선택 → 참여 (오버레이 카운트 상승)
-3. "추첨" 클릭 → 오버레이 당첨자 발표 + 지급 브리지가 SodaGift 상품 선택지 게시
-4. 당첨자가 상품 선택 → “선택한 선물 받기” 클릭 → 이때 SodaGift 주문 생성
-5. 로그인한 Twitch 계정의 귓속말 또는 “SodaGift에서 선물 받기” 버튼으로 API가 발급한 URL 열기
+3. "추첨" 클릭 → 오버레이 당첨자 발표 + 참가자 화면에 “선물 받기” 표시
+4. 당첨자가 “선물 받기” 클릭 → 국가별 기본 상품으로 SodaGift LINK 주문 생성
+5. 실제 수령 URL을 Twitch 귓속말로 전송 → 당첨자가 SodaGift 사이트에서 수령 완료

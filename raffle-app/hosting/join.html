@@ -59,7 +59,8 @@
   <div id="sec-win" class="card win hidden">
     <div class="result-emoji">🎉</div>
     <h2>축하합니다, 당첨!</h2>
-    <p style="margin:10px 0 4px" id="win-product">선물을 준비하고 있어요...</p>
+    <p style="margin:10px 0 4px" id="win-product">당첨 선물을 받아보세요!</p>
+    <button id="gift-start" class="btn accent hidden" type="button">🎁 선물 받기</button>
     <div id="gift-picker" class="hidden">
       <div id="gift-options" class="gift-options"></div>
       <button id="gift-approve" class="btn accent" type="button" disabled>선택한 선물 받기</button>
@@ -78,8 +79,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js?v=11"></script>
-<script src="/js/event.js?v=11"></script>
+<script src="/js/firebase-config.js?v=12"></script>
+<script src="/js/event.js?v=12"></script>
 <script>
 const SESSION_KEY = "sd_session";
 const COUNTRIES = { KR:"🇰🇷 South Korea", US:"🇺🇸 United States", JP:"🇯🇵 Japan", CA:"🇨🇦 Canada", AU:"🇦🇺 Australia", GB:"🇬🇧 United Kingdom", FR:"🇫🇷 France", SG:"🇸🇬 Singapore", HK:"🇭🇰 Hong Kong", TW:"🇹🇼 Taiwan", PH:"🇵🇭 Philippines", TH:"🇹🇭 Thailand", VN:"🇻🇳 Vietnam", MY:"🇲🇾 Malaysia", ID:"🇮🇩 Indonesia", IN:"🇮🇳 India", CN:"🇨🇳 China" };
@@ -207,6 +208,46 @@ function renderGiftOptions(options) {
   approve.disabled = selectedGiftId === null;
   approve.textContent = approvalButtonLabel();
 }
+
+async function requestGiftLink() {
+  const session = loadSession();
+  if (!session) throw new Error("Twitch 계정으로 다시 로그인해 주세요.");
+  const ref = sdEventRef();
+  await sdDb().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.data() || sdEmptyEvent();
+    const winners = [...(data.winners || [])];
+    const index = winners.findIndex((winner) => winner.uid === session.uid);
+    if (index < 0) throw new Error("당첨자 정보를 찾을 수 없습니다.");
+    const winner = { ...winners[index] };
+    if (winner.status !== "pending") {
+      if (winner.status === "claim_requested" || winner.status === "ordering") return;
+      throw new Error("이미 선물 발급이 진행 중이거나 완료되었습니다.");
+    }
+    winners[index] = {
+      ...winner,
+      status: "claim_requested",
+      claimRequestedAt: Date.now(),
+      whisperStatus: "sending",
+    };
+    tx.set(ref, { winners, updatedAt: Date.now() }, { merge: true });
+  });
+}
+
+document.getElementById("gift-start").onclick = async () => {
+  const start = document.getElementById("gift-start");
+  start.disabled = true;
+  start.textContent = "SodaGift LINK 발급 요청 중...";
+  try {
+    await requestGiftLink();
+    showError("");
+  } catch (err) {
+    console.error(err);
+    start.disabled = false;
+    start.textContent = "🎁 선물 받기";
+    showError(err.message || "선물 발급을 요청하지 못했습니다.");
+  }
+};
 
 async function approveSelectedGift() {
   const session = loadSession();
@@ -382,18 +423,28 @@ async function renderFromEvent(data) {
     if (winner) {
       show("sec-win");
       const product = document.getElementById("win-product");
+      const start = document.getElementById("gift-start");
       const picker = document.getElementById("gift-picker");
       const approve = document.getElementById("gift-approve");
       const button = document.getElementById("gift-btn");
       const status = document.getElementById("gift-status");
-      product.textContent = winner.productName || winner.selectedProductName || "선물을 준비하고 있어요...";
+      product.textContent = winner.productName || winner.selectedProductName || "당첨 선물을 받아보세요!";
+      start.classList.add("hidden");
+      start.disabled = false;
+      start.textContent = "🎁 선물 받기";
       picker.classList.add("hidden");
       button.classList.add("hidden");
       button.removeAttribute("href");
       status.classList.remove("hidden");
       approve.textContent = approvalButtonLabel();
 
-      if (winner.status === "choice_required" && (winner.giftOptions || []).length) {
+      if (winner.status === "pending") {
+        start.classList.remove("hidden");
+        status.textContent = "버튼을 누르면 SodaGift LINK를 발급해 Twitch 귓속말로 보내드립니다.";
+      } else if (winner.status === "claim_requested") {
+        product.textContent = "SodaGift 선물을 준비하고 있어요...";
+        status.textContent = "요청을 확인했습니다. SodaGift LINK 발급을 시작합니다...";
+      } else if (winner.status === "choice_required" && (winner.giftOptions || []).length) {
         product.textContent = "원하는 선물을 선택하세요";
         picker.classList.remove("hidden");
         renderGiftOptions(winner.giftOptions);
@@ -401,6 +452,7 @@ async function renderFromEvent(data) {
       } else if (winner.status === "order_approved") {
         status.textContent = "선택을 확인했습니다. 주문 후 Twitch 귓속말로 보내드릴게요...";
       } else if (winner.status === "ordering") {
+        product.textContent = "SodaGift 선물을 준비하고 있어요...";
         status.textContent = "SodaGift에서 선물 수령 링크를 발급하고 있어요...";
       } else if (winner.status === "failed") {
         status.textContent = "수령 링크 발급에 실패했습니다. 운영자에게 알려주세요.";
@@ -412,12 +464,15 @@ async function renderFromEvent(data) {
         try {
           const link = await decryptGiftLink(session, winner.encryptedGift);
           button.href = link;
-          button.classList.remove("hidden");
           button.textContent = "🎁 SodaGift에서 선물 받기";
           button.setAttribute("aria-label", "SodaGift 수령 사이트 열기");
-          status.textContent = winner.whisperStatus === "sent"
-            ? "아래 버튼은 Twitch 귓속말로 전송된 것과 동일한 SodaGift 수령 링크입니다."
-            : "Twitch 귓속말을 전송하지 못했습니다. 아래 버튼으로 SodaGift에서 직접 받아 주세요.";
+          if (winner.whisperStatus === "sent") {
+            button.classList.add("hidden");
+            status.textContent = "Twitch 귓속말로 SodaGift 수령 링크를 전송했습니다. 귓속말의 링크를 열어 선물을 받아 주세요.";
+          } else {
+            button.classList.remove("hidden");
+            status.textContent = "Twitch 귓속말을 전송하지 못했습니다. 아래 버튼으로 SodaGift에서 직접 받아 주세요.";
+          }
           showError("");
         } catch (err) {
           console.error(err);

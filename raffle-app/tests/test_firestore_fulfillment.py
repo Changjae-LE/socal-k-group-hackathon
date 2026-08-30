@@ -182,60 +182,103 @@ class FulfillmentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(real_link, sent[0][1])
         self.assertNotIn(real_link, str(winner))
 
-    async def test_pending_winner_gets_options_without_creating_order(self) -> None:
+    async def test_claim_requested_winner_creates_link_and_sends_whisper(self) -> None:
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         store = FakeStore({
             "status": "drawn",
-            "eventId": "event-options",
+            "eventId": "event-claim",
             "participants": {
                 "55": {
+                    "nickname": "claim-winner",
                     "country": "CA",
+                    "twitch": True,
                     "claimPublicKey": public_jwk(private_key),
                 }
             },
-            "winners": [{"uid": "55", "country": "CA", "status": "pending"}],
+            "winners": [{
+                "uid": "55",
+                "nickname": "claim-winner",
+                "country": "CA",
+                "status": "claim_requested",
+            }],
         })
+        real_link = "https://biz-sandbox.sodagift.com/claim/real-link"
+        sent = []
 
-        async def forbidden_gift_provider(*_args) -> dict[str, str]:
-            self.fail("pending winner must not create a SodaGift order")
-
-        async def options_provider(country: str) -> list[dict]:
+        async def gift_provider(
+            _name: str,
+            country: str,
+            _ref_id: str,
+            product_id: int | None,
+        ) -> dict[str, str]:
             self.assertEqual(country, "CA")
-            return [{
-                "id": 60048,
-                "name": "Demo Gift",
-                "amount": 10.0,
-                "currency": "USD",
-                "imageUrl": "https://example.com/gift.jpg",
-            }]
+            self.assertIsNone(product_id)
+            return {
+                "order_id": "33854",
+                "product_name": "Demo Gift",
+                "link": real_link,
+            }
+
+        async def whisper_provider(user_id: str, message: str) -> None:
+            sent.append((user_id, message))
 
         processed = await fulfill_once(
             store,
-            gift_provider=forbidden_gift_provider,
-            options_provider=options_provider,
+            gift_provider=gift_provider,
+            whisper_provider=whisper_provider,
         )
 
         self.assertEqual(processed, 1)
         winner = store.data["winners"][0]
-        self.assertEqual(winner["status"], "choice_required")
-        self.assertEqual(winner["giftOptions"][0]["id"], 60048)
-        self.assertNotIn("orderId", winner)
-        self.assertNotIn("encryptedGift", winner)
+        self.assertEqual(winner["status"], "link_ready")
+        self.assertEqual(winner["whisperStatus"], "sent")
+        self.assertEqual(sent[0][0], "55")
+        self.assertIn(real_link, sent[0][1])
+        self.assertEqual(decrypt_claim(private_key, winner["encryptedGift"]), real_link)
+
+    async def test_pending_winner_waits_for_claim_button(self) -> None:
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        store = FakeStore({
+            "status": "drawn",
+            "eventId": "event-pending",
+            "participants": {
+                "9": {
+                    "country": "US",
+                    "twitch": True,
+                    "claimPublicKey": public_jwk(private_key),
+                }
+            },
+            "winners": [{"uid": "9", "country": "US", "status": "pending"}],
+        })
+
+        async def forbidden_provider(*_args) -> dict[str, str]:
+            self.fail("pending winner must wait for the claim button")
+
+        self.assertEqual(
+            await fulfill_once(store, gift_provider=forbidden_provider),
+            0,
+        )
+        self.assertEqual(store.data["winners"][0]["status"], "pending")
 
     async def test_dry_run_never_calls_gift_provider(self) -> None:
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         store = FakeStore({
             "status": "drawn",
             "eventId": "event02",
-            "participants": {"1": {"claimPublicKey": public_jwk(private_key)}},
-            "winners": [{"uid": "1", "giftLink": "", "status": "pending"}],
+            "participants": {
+                "1": {
+                    "twitch": True,
+                    "claimPublicKey": public_jwk(private_key),
+                }
+            },
+            "winners": [{"uid": "1", "giftLink": "", "status": "claim_requested"}],
         })
 
         async def forbidden_provider(*_args: str) -> dict[str, str]:
             self.fail("dry run must not call SodaGift")
 
         self.assertEqual(await fulfill_once(store, forbidden_provider, dry_run=True), 1)
-        self.assertEqual(store.data["winners"][0]["status"], "pending")
+        self.assertEqual(store.data["winners"][0]["status"], "claim_requested")
 
     async def test_firestore_patch_updates_only_winners_with_precondition(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -310,7 +353,7 @@ class FulfillmentTests(unittest.IsolatedAsyncioTestCase):
         })
 
         self.assertEqual(await reset_failed_winners(store), 1)
-        self.assertEqual(store.data["winners"][0]["status"], "pending")
+        self.assertEqual(store.data["winners"][0]["status"], "claim_requested")
         self.assertNotIn("error", store.data["winners"][0])
 
     def test_brand_product_ranks_before_generic_prepaid_card(self) -> None:

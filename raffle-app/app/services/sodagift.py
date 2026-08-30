@@ -1,6 +1,6 @@
 """SodaGift Biz API 연동 (LINK 배송).
 
-플로우: 국가별 상품 선택 -> POST /v1/orders (LINK) -> GET /v1/orders/{id} 폴링
+플로우: 국가별 기본 상품 자동 선택 -> POST /v1/orders (LINK) -> GET /v1/orders/{id} 폴링
        -> order_items[].delivery.link (수령 URL, 비밀로 취급)
 
 SODAGIFT_API_KEY 미설정 시 mock 모드: 가짜 링크를 즉시 반환한다.
@@ -150,7 +150,15 @@ async def _create_order(product: dict, recipient_name: str, ref_id: str) -> int:
         for attempt in range(3):
             r = await client.post("/v1/orders", json=body)
             if r.status_code == 200:
-                return r.json()["id"]
+                payload = r.json()
+                raw_id = payload.get("id") or payload.get("order_id")
+                if raw_id is None and isinstance(payload.get("order"), dict):
+                    raw_id = payload["order"].get("id")
+                if raw_id is None:
+                    raise SodaGiftError(
+                        "POST /v1/orders succeeded but carried no order id"
+                    )
+                return int(raw_id)
             # order_retry_needed(500) 은 재시도 안전 (멱등키 있음)
             retriable = r.status_code == 500 and "order_retry_needed" in r.text
             if r.status_code == 429 or retriable:
