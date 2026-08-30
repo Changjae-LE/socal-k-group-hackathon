@@ -1,7 +1,7 @@
 # 🎁 StreamDrop
 
 라이브 방송(Twitch) 시청자 대상 실시간 글로벌 기프트 추첨 MVP.
-QR 스캔 → 참여 → 추첨 → SodaGift 상품 선택·주문 승인 → Twitch 귓속말 또는 사이트 자동 열기.
+QR 스캔 → Twitch 로그인 → 참여 → 추첨 → SodaGift 상품 선택·주문 승인 → Twitch 귓속말 수령.
 
 ## 공개 Hosting (Firebase, 무료)
 
@@ -36,12 +36,7 @@ cp .env.example .env   # 값 채우기
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-키 없이도 바로 데모 가능: SodaGift 미설정 → mock 링크, Twitch 미설정 → `DEBUG=1`일 때 `/join/dev`로 가짜 참여.
-
-```bash
-# 가짜 참가자 20명
-python scripts/fake_join.py 20
-```
+참가자 등록에는 Twitch 로그인이 반드시 필요합니다. SodaGift 키가 없을 때만 선물 링크가 mock 모드로 동작합니다.
 
 ## 폰에서 접속 (터널)
 폰이 QR로 접속해야 하므로 공개 URL이 필요하다.
@@ -53,13 +48,13 @@ cloudflared tunnel --url http://localhost:8000
 2. 참가자 Twitch 로그인은 공개 Hosting `/join`으로 복귀합니다. Redirect URL에 `https://hackathon-korean-team5.web.app/join`을 등록하세요.
 
 ## Twitch 설정
-1. https://dev.twitch.tv/console/apps 에서 앱 생성 → `TWITCH_CLIENT_ID/SECRET`
+1. https://dev.twitch.tv/console/apps 에서 앱 생성 → `TWITCH_CLIENT_ID` 설정
 2. Redirect URL: `https://hackathon-korean-team5.web.app/join` (필수), `https://hackathon-korean-team5.web.app/join/callback` (예비)
 3. 귓속말 발신 계정(전화번호 인증 필수)으로 토큰 발급:
    ```bash
-   twitch token -u -s user:manage:whispers
+   .venv/bin/python scripts/get_whisper_token.py
    ```
-   → `TWITCH_BOT_TOKEN`, 계정 ID → `TWITCH_BOT_USER_ID`
+   브라우저에서 승인하면 `TWITCH_BOT_TOKEN`과 `TWITCH_BOT_USER_ID`가 로컬 `.env`에 저장됩니다.
    - 제한: 초당 3건, 미인증 계정은 하루 신규 수신자 ~40명. 수신자가 낯선 귓속말 차단 시 실패(폰 화면 표시가 보장 경로).
 
 ## SodaGift 설정 (sandbox)
@@ -95,4 +90,4 @@ python scripts/fulfill_firestore_winners.py --once --retry-failed
 2. 관객이 QR 스캔 → Twitch 로그인 → 국가 선택 → 참여 (오버레이 카운트 상승)
 3. "추첨" 클릭 → 오버레이 당첨자 발표 + 지급 브리지가 SodaGift 상품 선택지 게시
 4. 당첨자가 상품 선택 → “선택한 선물 받기” 클릭 → 이때 SodaGift 주문 생성
-5. Twitch 참여자는 귓속말로 링크 수신, 닉네임 참여자는 SodaGift 사이트가 자동으로 열림
+5. 로그인한 Twitch 계정의 귓속말로 SodaGift 수령 링크 수신

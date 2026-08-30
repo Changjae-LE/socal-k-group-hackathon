@@ -27,7 +27,7 @@ body {
 .btn.twitch { background: var(--twitch); }
 .btn.accent { background: var(--accent); color: #04140e; }
 .btn + .btn { margin-top: 10px; }
-select.country, input.nick-input { width: 100%; padding: 14px; border-radius: 12px; background: var(--card2); color: var(--text); border: 1px solid #33334a; font-size: 16px; margin: 14px 0 18px; }
+select.country { width: 100%; padding: 14px; border-radius: 12px; background: var(--card2); color: var(--text); border: 1px solid #33334a; font-size: 16px; margin: 14px 0 18px; }
 .nick { font-weight: 800; color: var(--twitch); }
 .pulse { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); margin: 22px auto 10px; animation: pulse 1.4s infinite; }
 @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(0,229,160,.6)} 70%{box-shadow:0 0 0 18px rgba(0,229,160,0)} 100%{box-shadow:0 0 0 0 rgba(0,229,160,0)} }

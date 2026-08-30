@@ -1,8 +1,5 @@
 """참가자 플로우: Twitch OAuth 로그인 -> 국가 선택 -> 대기 -> 결과/수령."""
 import logging
-import secrets
-import time
-
 from fastapi import APIRouter, Form, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse
 from itsdangerous import BadSignature, URLSafeSerializer
@@ -15,8 +12,6 @@ log = logging.getLogger("streamdrop.join")
 router = APIRouter()
 
 _signer = URLSafeSerializer(config.SECRET_KEY, salt="sd-session")
-_oauth_states: dict[str, float] = {}  # state -> 발급 시각 (10분 유효)
-
 COOKIE = "sd_session"
 
 
@@ -52,7 +47,6 @@ def _page_context(request: Request) -> dict:
         "is_loser": ev.status == "drawn" and participant is not None and winner is None,
         "countries": config.COUNTRIES,
         "twitch_ready": bool(config.TWITCH_CLIENT_ID),
-        "debug": config.DEBUG,
     }
 
 
@@ -80,17 +74,6 @@ async def join_callback():
 location.replace({dest!r} + location.search + location.hash);
 </script></body></html>"""
     )
-
-
-@router.get("/join/dev")
-async def join_dev(nick: str = ""):
-    """DEBUG 전용: OAuth 없이 가짜 참가자 세션 발급 (부하테스트/로컬데모)."""
-    if not config.DEBUG:
-        return RedirectResponse("/join")
-    nick = nick or f"tester{secrets.token_hex(2)}"
-    resp = RedirectResponse("/join")
-    _set_session(resp, {"uid": f"dev{secrets.token_hex(4)}", "nick": nick})
-    return resp
 
 
 @router.post("/join/enter")

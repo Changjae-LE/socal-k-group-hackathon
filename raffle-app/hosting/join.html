@@ -14,10 +14,8 @@
   <div id="error-box" class="error-box hidden"></div>
 
   <div id="sec-login" class="card">
-    <p style="margin-bottom:8px">Twitch로 참여하거나 닉네임을 입력하세요</p>
-    <a id="btn-twitch" class="btn twitch hidden" href="#">🟣 Twitch로 참여하기</a>
-    <input id="nick-input" class="nick-input" minlength="2" maxlength="20" placeholder="방송에서 사용할 닉네임" required>
-    <button class="btn" style="background:#33334a" id="btn-login" type="button">닉네임으로 참여</button>
+    <p style="margin-bottom:18px">Twitch 계정으로 로그인해야 이벤트에 참여할 수 있습니다.</p>
+    <a id="btn-twitch" class="btn twitch hidden" href="#">🟣 Twitch로 로그인하고 참여하기</a>
   </div>
 
   <div id="sec-idle" class="card hidden">
@@ -80,8 +78,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js?v=7"></script>
-<script src="/js/event.js?v=7"></script>
+<script src="/js/firebase-config.js?v=8"></script>
+<script src="/js/event.js?v=8"></script>
 <script>
 const SESSION_KEY = "sd_session";
 const COUNTRIES = { KR:"🇰🇷 South Korea", US:"🇺🇸 United States", JP:"🇯🇵 Japan", CA:"🇨🇦 Canada", AU:"🇦🇺 Australia", GB:"🇬🇧 United Kingdom", FR:"🇫🇷 France", SG:"🇸🇬 Singapore", HK:"🇭🇰 Hong Kong", TW:"🇹🇼 Taiwan", PH:"🇵🇭 Philippines", TH:"🇹🇭 Thailand", VN:"🇻🇳 Vietnam", MY:"🇲🇾 Malaysia", ID:"🇮🇩 Indonesia", IN:"🇮🇳 India", CN:"🇨🇳 China" };
@@ -155,13 +153,9 @@ async function decryptGiftLink(session, encrypted) {
 }
 
 let selectedGiftId = null;
-let pendingClaimWindow = null;
 
 function approvalButtonLabel() {
-  const session = loadSession();
-  return session && session.twitch
-    ? "Twitch 귓속말로 선물 받기"
-    : "선택한 선물 바로 열기";
+  return "Twitch 귓속말로 선물 받기";
 }
 
 function renderGiftOptions(options) {
@@ -233,14 +227,6 @@ async function approveSelectedGift() {
 
 document.getElementById("gift-approve").onclick = async () => {
   const approve = document.getElementById("gift-approve");
-  const session = loadSession();
-  if (session && !session.twitch) {
-    pendingClaimWindow = window.open("", "_blank");
-    if (pendingClaimWindow) {
-      pendingClaimWindow.document.title = "StreamDrop 선물 준비 중";
-      pendingClaimWindow.document.body.textContent = "SodaGift 수령 링크를 준비하고 있어요...";
-    }
-  }
   approve.disabled = true;
   approve.textContent = "주문 요청 중...";
   try {
@@ -248,8 +234,6 @@ document.getElementById("gift-approve").onclick = async () => {
     showError("");
   } catch (err) {
     console.error(err);
-    if (pendingClaimWindow && !pendingClaimWindow.closed) pendingClaimWindow.close();
-    pendingClaimWindow = null;
     approve.disabled = false;
     approve.textContent = approvalButtonLabel();
     showError(err.message || "선물 선택을 저장하지 못했습니다.");
@@ -257,11 +241,15 @@ document.getElementById("gift-approve").onclick = async () => {
 };
 
 async function registerOnPublicEvent(session) {
+  if (!session || session.twitch !== true || !/^\d+$/.test(String(session.uid || ""))) {
+    localStorage.removeItem(SESSION_KEY);
+    throw new Error("Twitch 계정으로 로그인해야 참여할 수 있습니다.");
+  }
   await ensureClaimKeys(session);
   const written = await sdWriteParticipant(session.uid, {
     nickname: session.nick,
     country: session.country || "",
-    twitch: session.twitch,
+    twitch: true,
     claimPublicKey: session.claimPublicKey,
   });
   session.eventId = written.eventId;
@@ -305,32 +293,16 @@ async function consumeTwitchHash() {
   return true;
 }
 
-document.getElementById("btn-login").onclick = async () => {
-  const nick = document.getElementById("nick-input").value.trim();
-  if (nick.length < 2) { showError("닉네임을 2자 이상 입력해 주세요."); return; }
-  showError("");
-  const session = {
-    uid: `p${Date.now().toString(16)}${Math.random().toString(16).slice(2, 6)}`,
-    nick,
-    country: "",
-    eventId: "",
-    twitch: false,
-  };
-  saveSession(session);
-  try {
-    const written = await registerOnPublicEvent(session);
-    renderFromEvent(written);
-  } catch (err) {
-    console.error(err);
-    showError("공개 서버에 참여 정보를 보내지 못했습니다. 잠시 후 다시 시도해 주세요.");
-  }
-};
-
 document.getElementById("btn-enter").onclick = async () => {
   const country = document.getElementById("country").value;
   const session = loadSession();
   if (!country) { showError("국가를 선택해 주세요."); return; }
-  if (!session) return;
+  if (!session || session.twitch !== true || !/^\d+$/.test(String(session.uid || ""))) {
+    localStorage.removeItem(SESSION_KEY);
+    show("sec-login");
+    showError("Twitch 계정으로 다시 로그인해 주세요.");
+    return;
+  }
   session.country = country;
   saveSession(session);
   try {
@@ -346,7 +318,11 @@ document.getElementById("btn-enter").onclick = async () => {
 async function renderFromEvent(data) {
   window.__eventData = data;
   const session = loadSession();
-  if (!session) { show("sec-login"); return; }
+  if (!session || session.twitch !== true || !/^\d+$/.test(String(session.uid || ""))) {
+    if (session) localStorage.removeItem(SESSION_KEY);
+    show("sec-login");
+    return;
+  }
 
   const participant = (data.participants || {})[session.uid];
   const joined = Boolean(participant && participant.country);
@@ -381,9 +357,7 @@ async function renderFromEvent(data) {
         renderGiftOptions(winner.giftOptions);
         status.textContent = "선택 후 버튼을 누르면 SodaGift 주문이 시작됩니다.";
       } else if (winner.status === "order_approved") {
-        status.textContent = session.twitch
-          ? "선택을 확인했습니다. 주문 후 Twitch 귓속말로 보내드릴게요..."
-          : "선택을 확인했습니다. SodaGift 사이트를 준비하고 있어요...";
+        status.textContent = "선택을 확인했습니다. 주문 후 Twitch 귓속말로 보내드릴게요...";
       } else if (winner.status === "ordering") {
         status.textContent = "SodaGift에서 선물 수령 링크를 발급하고 있어요...";
       } else if (winner.status === "failed") {
@@ -397,22 +371,12 @@ async function renderFromEvent(data) {
           const link = await decryptGiftLink(session, winner.encryptedGift);
           button.href = link;
           button.classList.remove("hidden");
-          if (session.twitch) {
-            button.textContent = winner.whisperStatus === "failed"
-              ? "🎁 귓속말 전송 실패 · 링크 직접 열기"
-              : "🎁 수령 링크 직접 열기 (백업)";
-            status.textContent = winner.whisperStatus === "sent"
-              ? "Twitch 귓속말로 수령 링크를 전송했습니다."
-              : "Twitch 귓속말을 전송하지 못했습니다. 아래 버튼으로 열어 주세요.";
-          } else if (pendingClaimWindow && !pendingClaimWindow.closed) {
-            pendingClaimWindow.location.replace(link);
-            pendingClaimWindow = null;
-            button.textContent = "🎁 선물 사이트 다시 열기";
-            status.textContent = "SodaGift 사이트를 새 창으로 열었습니다.";
-          } else {
-            button.textContent = "🎁 선물 사이트 열기";
-            status.textContent = "팝업이 차단되었다면 아래 버튼을 눌러 주세요.";
-          }
+          button.textContent = winner.whisperStatus === "failed"
+            ? "🎁 귓속말 전송 실패 · 링크 직접 열기"
+            : "🎁 수령 링크 직접 열기 (백업)";
+          status.textContent = winner.whisperStatus === "sent"
+            ? "Twitch 귓속말로 수령 링크를 전송했습니다."
+            : "Twitch 귓속말을 전송하지 못했습니다. 아래 버튼으로 열어 주세요.";
           showError("");
         } catch (err) {
           console.error(err);
@@ -439,7 +403,11 @@ if (sdSendTwitchReturnToPublicJoin()) {
     const consumed = await consumeTwitchHash();
     if (!consumed) {
       const session = loadSession();
-      if (session) await registerOnPublicEvent(session);
+      if (session && session.twitch === true && /^\d+$/.test(String(session.uid || ""))) {
+        await registerOnPublicEvent(session);
+      } else if (session) {
+        localStorage.removeItem(SESSION_KEY);
+      }
     }
   })
   .catch((err) => {

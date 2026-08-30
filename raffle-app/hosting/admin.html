@@ -34,7 +34,7 @@
   <section>
     <h2>당첨자 / 지급 현황</h2>
     <table>
-      <thead><tr><th>닉네임</th><th>국가</th><th>상품</th><th>주문</th><th>링크</th><th>귓속말</th></tr></thead>
+      <thead><tr><th>Twitch 계정</th><th>국가</th><th>상품</th><th>주문</th><th>링크</th><th>귓속말</th></tr></thead>
       <tbody id="winners"><tr><td colspan="6" style="color:var(--muted)">추첨 전</td></tr></tbody>
     </table>
   </section>
@@ -42,8 +42,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js?v=6"></script>
-<script src="/js/event.js?v=6"></script>
+<script src="/js/firebase-config.js?v=8"></script>
+<script src="/js/event.js?v=8"></script>
 <script>
 const token = new URLSearchParams(location.search).get("token");
 if (token !== window.STREAMDROP_ADMIN_TOKEN) {

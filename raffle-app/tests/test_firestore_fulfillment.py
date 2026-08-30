@@ -83,6 +83,7 @@ class FulfillmentTests(unittest.IsolatedAsyncioTestCase):
                 "123": {
                     "nickname": "winner",
                     "country": "KR",
+                    "twitch": True,
                     "claimPublicKey": public_jwk(private_key),
                 }
             },
@@ -111,14 +112,21 @@ class FulfillmentTests(unittest.IsolatedAsyncioTestCase):
                 "link": real_link,
             }
 
-        processed = await fulfill_once(store, gift_provider=gift_provider)
+        async def failed_whisper(_user_id: str, _message: str) -> None:
+            raise RuntimeError("recipient blocks whispers")
+
+        processed = await fulfill_once(
+            store,
+            gift_provider=gift_provider,
+            whisper_provider=failed_whisper,
+        )
 
         self.assertEqual(processed, 1)
         winner = store.data["winners"][0]
         self.assertEqual(winner["status"], "link_ready")
         self.assertEqual(winner["giftLink"], "")
         self.assertEqual(winner["productName"], "Test Gift")
-        self.assertEqual(winner["whisperStatus"], "skipped")
+        self.assertEqual(winner["whisperStatus"], "failed")
         self.assertNotIn(real_link, str(winner))
         self.assertEqual(decrypt_claim(private_key, winner["encryptedGift"]), real_link)
 

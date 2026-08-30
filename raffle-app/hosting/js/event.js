@@ -46,14 +46,21 @@ async function sdEnsureEvent() {
 }
 
 function sdParticipantList(data) {
-  return Object.entries(data.participants || {}).map(([uid, p]) => ({ uid, ...p }));
+  return Object.entries(data.participants || {})
+    .map(([uid, p]) => ({ uid, ...p }))
+    .filter((p) => p.twitch === true && /^\d+$/.test(String(p.uid || "")));
 }
 
 function sdJoinedList(data) {
-  return sdParticipantList(data).filter((p) => p.country && p.claimPublicKey);
+  return sdParticipantList(data).filter(
+    (p) => p.twitch === true && /^\d+$/.test(String(p.uid || "")) && p.country && p.claimPublicKey,
+  );
 }
 
 async function sdWriteParticipant(uid, fields) {
+  if (fields.twitch !== true || !/^\d+$/.test(String(uid || ""))) {
+    throw new Error("Twitch 계정으로 로그인해야 참여할 수 있습니다.");
+  }
   const ref = sdEventRef();
   return sdDb().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -64,7 +71,7 @@ async function sdWriteParticipant(uid, fields) {
       nickname: fields.nickname || prev.nickname || "",
       country: fields.country || prev.country || "",
       joinedAt: prev.joinedAt || Date.now(),
-      twitch: Boolean(fields.twitch || prev.twitch),
+      twitch: true,
       claimPublicKey: fields.claimPublicKey || prev.claimPublicKey || null,
     };
     participants[uid] = next;
