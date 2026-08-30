@@ -14,10 +14,8 @@
   <div id="error-box" class="error-box hidden"></div>
 
   <div id="sec-login" class="card">
-    <p style="margin-bottom:8px">Twitch로 참여하거나 닉네임을 입력하세요</p>
-    <a id="btn-twitch" class="btn twitch hidden" href="#">🟣 Twitch로 참여하기</a>
-    <input id="nick-input" class="nick-input" minlength="2" maxlength="20" placeholder="방송에서 사용할 닉네임" required>
-    <button class="btn" style="background:#33334a" id="btn-login" type="button">닉네임으로 참여</button>
+    <p style="margin-bottom:18px">Twitch 계정으로 로그인해야 이벤트에 참여할 수 있습니다.</p>
+    <a id="btn-twitch" class="btn twitch hidden" href="#">🟣 Twitch로 로그인하고 참여하기</a>
   </div>
 
   <div id="sec-idle" class="card hidden">
@@ -63,8 +61,14 @@
   <div id="sec-win" class="card win hidden">
     <div class="result-emoji">🎉</div>
     <h2>축하합니다, 당첨!</h2>
-    <p style="margin:10px 0 4px" id="win-product">선물을 준비하고 있어요...</p>
-    <a id="gift-btn" class="btn accent" href="#" target="_blank">🎁 선물 수령하기</a>
+    <p style="margin:10px 0 4px" id="win-product">당첨 선물을 받아보세요!</p>
+    <button id="gift-start" class="btn accent hidden" type="button">🎁 선물 받기</button>
+    <div id="gift-picker" class="hidden">
+      <div id="gift-options" class="gift-options"></div>
+      <button id="gift-approve" class="btn accent" type="button" disabled>선택한 선물 받기</button>
+    </div>
+    <a id="gift-btn" class="btn accent hidden" target="_blank" rel="noopener">🎁 SodaGift에서 수령하기</a>
+    <p class="gift-note" id="gift-status">선택 가능한 선물을 준비하고 있어요...</p>
     <p class="gift-note">이 링크는 본인 전용입니다. 절대 공유하지 마세요.</p>
   </div>
 
@@ -72,6 +76,11 @@
     <div class="result-emoji">😢</div>
     <h2>아쉽지만 다음 기회에!</h2>
     <p class="gift-note">참여해 주셔서 감사합니다.</p>
+    <div id="recs" class="hidden">
+      <p class="recs-title">🤖 AI가 <span class="nick" id="recs-nick"></span>님 취향으로 고른 선물</p>
+      <div id="recs-list"></div>
+      <a class="btn accent" style="margin-top:14px" href="https://sodagift.com" target="_blank" rel="noopener">🛍 SodaGift에서 선물하기</a>
+    </div>
   </div>
 </div>
 
@@ -80,6 +89,11 @@
 <script src="/js/firebase-config.js?v=7"></script>
 <script src="/js/event.js?v=7"></script>
 <script>
+// 로컬/통합 테스트용: ?edoc=events/test-recs 로 별도 이벤트 문서 사용
+{
+  const edoc = new URLSearchParams(location.search).get("edoc");
+  if (edoc && /^events\/[\w-]+$/.test(edoc)) window.STREAMDROP_EVENT_DOC = edoc;
+}
 const SESSION_KEY = "sd_session";
 const COUNTRIES = { KR:"🇰🇷 South Korea", US:"🇺🇸 United States", JP:"🇯🇵 Japan", CA:"🇨🇦 Canada", AU:"🇦🇺 Australia", GB:"🇬🇧 United Kingdom", FR:"🇫🇷 France", SG:"🇸🇬 Singapore", HK:"🇭🇰 Hong Kong", TW:"🇹🇼 Taiwan", PH:"🇵🇭 Philippines", TH:"🇹🇭 Thailand", VN:"🇻🇳 Vietnam", MY:"🇲🇾 Malaysia", ID:"🇮🇩 Indonesia", IN:"🇮🇳 India", CN:"🇨🇳 China" };
 
@@ -143,32 +157,109 @@ function setupCountryPicker() {
 }
 
 async function registerOnPublicEvent(session) {
+  if (!session || session.twitch !== true || !/^\d+$/.test(String(session.uid || ""))) {
+    localStorage.removeItem(SESSION_KEY);
+    throw new Error("Twitch 계정으로 로그인해야 참여할 수 있습니다.");
+  }
+  await ensureClaimKeys(session);
   const written = await sdWriteParticipant(session.uid, {
     nickname: session.nick,
     country: session.country || "",
-    twitch: session.twitch,
+    twitch: true,
+    claimPublicKey: session.claimPublicKey,
+    tasteProfile: session.tasteProfile || null,
   });
   session.eventId = written.eventId;
   saveSession(session);
   return written;
 }
 
+const TWITCH_STATE_KEY = "sd_twitch_oauth_state";
+
+function randomOAuthValue() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
 if (window.STREAMDROP_TWITCH_CLIENT_ID) {
   const btn = document.getElementById("btn-twitch");
-  const twitchAuth = "https://id.twitch.tv/oauth2/authorize?" + new URLSearchParams({
-    client_id: window.STREAMDROP_TWITCH_CLIENT_ID,
-    redirect_uri: "https://hackathon-korean.web.app/join",
-    response_type: "token",
-  });
-  btn.href = twitchAuth;
   btn.classList.remove("hidden");
+  btn.onclick = (event) => {
+    event.preventDefault();
+    const oauthState = randomOAuthValue();
+    localStorage.setItem(TWITCH_STATE_KEY, oauthState);
+    const twitchAuth = "https://id.twitch.tv/oauth2/authorize?" + new URLSearchParams({
+      client_id: window.STREAMDROP_TWITCH_CLIENT_ID,
+      redirect_uri: window.STREAMDROP_TWITCH_REDIRECT_URI,
+      response_type: "token",
+      scope: "user:read:email user:read:follows",
+      state: oauthState,
+    });
+    location.assign(twitchAuth);
+  };
+}
+
+async function fetchTasteProfile(token, userId) {
+  // AI 추천용 취향 프로필: 팔로우 채널 + 각 채널의 방송 카테고리 (best-effort)
+  try {
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Client-Id": window.STREAMDROP_TWITCH_CLIENT_ID,
+    };
+    const fr = await fetch(
+      `https://api.twitch.tv/helix/channels/followed?user_id=${userId}&first=100`,
+      { headers },
+    );
+    if (!fr.ok) return [];
+    const follows = (await fr.json()).data || [];
+    if (!follows.length) return [];
+    const cats = {};
+    const ids = follows.map((f) => f.broadcaster_id);
+    const cr = await fetch(
+      "https://api.twitch.tv/helix/channels?" +
+        ids.map((id) => `broadcaster_id=${encodeURIComponent(id)}`).join("&"),
+      { headers },
+    );
+    if (cr.ok) {
+      for (const ch of (await cr.json()).data || []) {
+        cats[ch.broadcaster_id] = ch.game_name || "";
+      }
+    }
+    return follows.slice(0, 30).map((f) => ({
+      name: f.broadcaster_name || f.broadcaster_login || "",
+      category: cats[f.broadcaster_id] || "",
+    }));
+  } catch (err) {
+    console.warn("taste profile fetch failed", err);
+    return [];
+  }
 }
 
 async function consumeTwitchHash() {
+  const query = new URLSearchParams(location.search);
+  if (query.get("error")) {
+    const code = query.get("error") || "oauth_error";
+    const description = query.get("error_description") || "";
+    history.replaceState(null, "", location.pathname);
+    localStorage.removeItem(TWITCH_STATE_KEY);
+    if (code === "access_denied") {
+      throw new Error("Twitch 승인이 취소되었습니다. 다시 로그인하고 Authorize를 선택해 주세요.");
+    }
+    if (/redirect|uri/i.test(code + " " + description)) {
+      throw new Error("Twitch Redirect URL 설정이 일치하지 않습니다: https://hackathon-korean-team5.web.app/join");
+    }
+    throw new Error("Twitch 로그인 실패 (" + code + "): " + (description || "다시 시도해 주세요."));
+  }
+
   const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
   const token = hash.get("access_token");
   if (!token || !window.STREAMDROP_TWITCH_CLIENT_ID) return false;
-  history.replaceState(null, "", location.pathname + location.search);
+
+  const expectedState = localStorage.getItem(TWITCH_STATE_KEY);
+  if (!expectedState || hash.get("state") !== expectedState) {
+    throw new Error("Twitch 로그인 확인값이 일치하지 않습니다. 다시 로그인해 주세요.");
+  }
   const res = await fetch("https://api.twitch.tv/helix/users", {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -176,45 +267,35 @@ async function consumeTwitchHash() {
     },
   });
   if (!res.ok) throw new Error("Twitch 사용자 정보를 가져오지 못했습니다.");
-  const user = (await res.json()).data[0];
+  const user = (await res.json()).data?.[0];
+  if (!user?.id) throw new Error("Twitch 계정 정보를 확인하지 못했습니다.");
+  history.replaceState(null, "", location.pathname);
+  localStorage.removeItem(TWITCH_STATE_KEY);
+  const tasteProfile = await fetchTasteProfile(token, user.id);
   const session = {
     uid: user.id,
     nick: user.display_name || user.login,
     country: "",
     eventId: "",
     twitch: true,
+    tasteProfile,
   };
   saveSession(session);
-  await registerOnPublicEvent(session);
+  const written = await registerOnPublicEvent(session);
+  await renderFromEvent(written);
   return true;
 }
-
-document.getElementById("btn-login").onclick = async () => {
-  const nick = document.getElementById("nick-input").value.trim();
-  if (nick.length < 2) { showError("닉네임을 2자 이상 입력해 주세요."); return; }
-  showError("");
-  const session = {
-    uid: `p${Date.now().toString(16)}${Math.random().toString(16).slice(2, 6)}`,
-    nick,
-    country: "",
-    eventId: "",
-    twitch: false,
-  };
-  saveSession(session);
-  try {
-    const written = await registerOnPublicEvent(session);
-    renderFromEvent(written);
-  } catch (err) {
-    console.error(err);
-    showError("공개 서버에 참여 정보를 보내지 못했습니다. 잠시 후 다시 시도해 주세요.");
-  }
-};
 
 document.getElementById("btn-enter").onclick = async () => {
   const country = document.getElementById("country").value;
   const session = loadSession();
   if (!country) { showError("국가를 선택해 주세요."); return; }
-  if (!session) return;
+  if (!session || session.twitch !== true || !/^\d+$/.test(String(session.uid || ""))) {
+    localStorage.removeItem(SESSION_KEY);
+    show("sec-login");
+    showError("Twitch 계정으로 다시 로그인해 주세요.");
+    return;
+  }
   session.country = country;
   saveSession(session);
   try {
@@ -227,10 +308,53 @@ document.getElementById("btn-enter").onclick = async () => {
   }
 };
 
-function renderFromEvent(data) {
+function renderLoserRecs(session, participant) {
+  const box = document.getElementById("recs");
+  const list = document.getElementById("recs-list");
+  const items = (participant && participant.recs) || [];
+  if (!items.length) { box.classList.add("hidden"); return; }
+  document.getElementById("recs-nick").textContent = session.nick || "";
+  list.replaceChildren();
+  for (const item of items) {
+    const card = document.createElement("div");
+    card.className = "rec-card";
+    if (item.imageUrl) {
+      const img = document.createElement("img");
+      img.src = item.imageUrl;
+      img.alt = "";
+      img.loading = "lazy";
+      img.referrerPolicy = "no-referrer";
+      card.appendChild(img);
+    }
+    const info = document.createElement("div");
+    info.className = "rec-info";
+    const brand = document.createElement("div");
+    brand.className = "rec-brand";
+    brand.textContent = item.brand || "";
+    const name = document.createElement("div");
+    name.className = "rec-name";
+    name.textContent = item.name || "";
+    const price = document.createElement("div");
+    price.className = "rec-price";
+    price.textContent = `${item.amount ?? ""} ${item.currency || ""}`.trim();
+    const reason = document.createElement("div");
+    reason.className = "rec-reason";
+    reason.textContent = item.reason || "";
+    info.append(brand, name, price, reason);
+    card.appendChild(info);
+    list.appendChild(card);
+  }
+  box.classList.remove("hidden");
+}
+
+async function renderFromEvent(data) {
   window.__eventData = data;
   const session = loadSession();
-  if (!session) { show("sec-login"); return; }
+  if (!session || session.twitch !== true || !/^\d+$/.test(String(session.uid || ""))) {
+    if (session) localStorage.removeItem(SESSION_KEY);
+    show("sec-login");
+    return;
+  }
 
   const participant = (data.participants || {})[session.uid];
   const joined = Boolean(participant && participant.country);
@@ -257,8 +381,66 @@ function renderFromEvent(data) {
         giftBtn.classList.add("hidden");
       }
       show("sec-win");
+      const product = document.getElementById("win-product");
+      const start = document.getElementById("gift-start");
+      const picker = document.getElementById("gift-picker");
+      const approve = document.getElementById("gift-approve");
+      const button = document.getElementById("gift-btn");
+      const status = document.getElementById("gift-status");
+      product.textContent = winner.productName || winner.selectedProductName || "당첨 선물을 받아보세요!";
+      start.classList.add("hidden");
+      start.disabled = false;
+      start.textContent = "🎁 선물 받기";
+      picker.classList.add("hidden");
+      button.classList.add("hidden");
+      button.removeAttribute("href");
+      status.classList.remove("hidden");
+      approve.textContent = approvalButtonLabel();
+
+      if (winner.status === "pending") {
+        start.classList.remove("hidden");
+        status.textContent = "버튼을 누르면 SodaGift LINK를 발급해 Twitch 귓속말로 보내드립니다.";
+      } else if (winner.status === "claim_requested") {
+        product.textContent = "SodaGift 선물을 준비하고 있어요...";
+        status.textContent = "요청을 확인했습니다. SodaGift LINK 발급을 시작합니다...";
+      } else if (winner.status === "choice_required" && (winner.giftOptions || []).length) {
+        product.textContent = "원하는 선물을 선택하세요";
+        picker.classList.remove("hidden");
+        renderGiftOptions(winner.giftOptions);
+        status.textContent = "선택 후 버튼을 누르면 SodaGift 주문이 시작됩니다.";
+      } else if (winner.status === "order_approved") {
+        status.textContent = "선택을 확인했습니다. 주문 후 Twitch 귓속말로 보내드릴게요...";
+      } else if (winner.status === "ordering") {
+        product.textContent = "SodaGift 선물을 준비하고 있어요...";
+        status.textContent = "SodaGift에서 선물 수령 링크를 발급하고 있어요...";
+      } else if (winner.status === "failed") {
+        status.textContent = "수령 링크 발급에 실패했습니다. 운영자에게 알려주세요.";
+      } else {
+        status.textContent = "선택 가능한 선물을 불러오고 있어요...";
+      }
+
+      if (winner.encryptedGift) {
+        try {
+          const link = await decryptGiftLink(session, winner.encryptedGift);
+          button.href = link;
+          button.textContent = "🎁 SodaGift에서 선물 받기";
+          button.setAttribute("aria-label", "SodaGift 수령 사이트 열기");
+          if (winner.whisperStatus === "sent") {
+            button.classList.remove("hidden");
+            status.textContent = "Twitch가 귓속말 전송 요청을 접수했습니다. 도착하지 않으면 아래 버튼으로 바로 받아 주세요.";
+          } else {
+            button.classList.remove("hidden");
+            status.textContent = "Twitch 귓속말을 전송하지 못했습니다. 아래 버튼으로 SodaGift에서 직접 받아 주세요.";
+          }
+          showError("");
+        } catch (err) {
+          console.error(err);
+          status.textContent = "이 기기에서 수령 링크를 열 수 없습니다. 참여했던 기기를 사용해 주세요.";
+        }
+      }
     } else if (joined) {
       show("sec-lose");
+      renderLoserRecs(session, participant);
     } else {
       show("sec-idle");
     }
@@ -274,13 +456,23 @@ setupCountryPicker();
 if (sdSendTwitchReturnToPublicJoin()) {
   // Twitch came back to localhost or another host; bounce to public /join.
 } else sdEnsureEvent()
-  .then(() => consumeTwitchHash())
+  .then(async () => {
+    const consumed = await consumeTwitchHash();
+    if (!consumed) {
+      const session = loadSession();
+      if (session && session.twitch === true && /^\d+$/.test(String(session.uid || ""))) {
+        await registerOnPublicEvent(session);
+      } else if (session) {
+        localStorage.removeItem(SESSION_KEY);
+      }
+    }
+  })
   .catch((err) => {
     console.error(err);
     showError(err.message || "Twitch 로그인에 실패했습니다.");
   })
   .finally(() => {
-    sdListenEvent(renderFromEvent, () => showError("실시간 연결이 끊겼습니다. 페이지를 새로고침해 주세요."));
+    sdListenEvent((data) => { void renderFromEvent(data); }, () => showError("실시간 연결이 끊겼습니다. 페이지를 새로고침해 주세요."));
   });
 </script>
 </body>

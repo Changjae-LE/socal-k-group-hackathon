@@ -25,12 +25,9 @@
   <div id="sec-login" class="card {% if session %}hidden{% endif %}">
     <p style="margin-bottom:18px">Twitch 계정으로 참여해 주세요</p>
     {% if twitch_ready %}
-    <a class="btn twitch" href="https://hackathon-korean.web.app/join">🟣 Twitch로 참여하기</a>
+    <a class="btn twitch" href="https://hackathon-korean-team5.web.app/join">🟣 Twitch로 참여하기</a>
     {% else %}
     <p class="gift-note">⚠️ 서버에 TWITCH_CLIENT_ID가 설정되지 않았습니다.</p>
-    {% endif %}
-    {% if debug %}
-    <a class="btn" style="background:#33334a;margin-top:10px" href="/join/dev">🧪 테스트 참여 (dev)</a>
     {% endif %}
   </div>
 

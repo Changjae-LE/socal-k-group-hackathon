@@ -12,7 +12,7 @@ AUTH_BASE = "https://id.twitch.tv/oauth2"
 HELIX = "https://api.twitch.tv/helix"
 
 
-PUBLIC_JOIN = "https://hackathon-korean.web.app/join"
+PUBLIC_JOIN = "https://hackathon-korean-team5.web.app/join"
 
 
 def redirect_uri() -> str:
@@ -28,7 +28,9 @@ def authorize_url(state: str) -> str:
         "client_id": config.TWITCH_CLIENT_ID,
         "redirect_uri": redirect_uri(),
         "response_type": "token",
+        "scope": "user:read:email",
         "state": state,
+        "force_verify": "true",
     }
     return f"{AUTH_BASE}/authorize?{urllib.parse.urlencode(params)}"
 

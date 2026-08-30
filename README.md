@@ -7,7 +7,7 @@ StreamDrop은 전 세계 시청자가 함께하는 Twitch 방송에서 이벤트
 - 발표 자료: [StreamDrop Twitch 해커톤 기획안 v2](Demo/Presentation/StreamDrop_Twitch_%ED%95%B4%EC%BB%A4%ED%86%A4_%EA%B8%B0%ED%9A%8D%EC%95%88_v2.pptx)
 - 최종 통합 데모: [`raffle-app`](raffle-app)
 - 초기 OBS 오버레이 프로토타입: [`streamdrop-app`](streamdrop-app)
-- 공개 Hosting: https://hackathon-korean.web.app — 참여 `/join`, 오버레이 `/overlay`, 운영 `/admin?token=streamdrop`
+- 공개 Hosting: https://hackathon-korean-team5.web.app — 참여 `/join`, 오버레이 `/overlay`, 운영 `/admin?token=streamdrop`
 
 ## 1. 해결하려는 문제
 
@@ -29,8 +29,10 @@ flowchart LR
     C --> D[운영 화면과 OBS 참여 인원 갱신]
     D --> E[운영자가 실시간 추첨]
     E --> F[OBS 당첨 발표]
-    E --> G[당첨자 휴대폰에만 수령 LINK 전달]
-    G --> H[SodaGift에서 선물 수령]
+    E --> G[당첨자 화면에 선물 받기 표시]
+    G --> H[버튼 클릭 후 국가별 상품 자동 선택]
+    H --> I[SodaGift LINK 주문 후 Twitch 귓속말]
+    I --> J[SodaGift에서 선물 수령]
 ```
 
 ### 참가자
@@ -38,13 +40,14 @@ flowchart LR
 1. Twitch 방송의 QR 코드를 스캔합니다.
 2. Twitch 계정으로 로그인하고 국가를 선택합니다.
 3. 같은 휴대폰 화면에서 참여 완료와 추첨 결과를 기다립니다.
-4. 당첨된 경우에만 선물 수령 버튼이 표시됩니다.
-5. Twitch 귓속말은 보조 전달 경로이며, 휴대폰 화면을 기본 보장 경로로 사용합니다.
+4. 당첨 화면에 표시된 “선물 받기” 버튼을 누릅니다.
+5. 서버가 국가별 기본 상품으로 SodaGift LINK 주문을 생성합니다.
+6. 당첨자는 Twitch 귓속말의 URL을 열어 SodaGift 사이트에서 수령을 완료합니다.
 
 ### 운영자
 
 1. `/admin`에서 이벤트를 시작합니다.
-2. 참가자 수, 닉네임, 국가를 실시간으로 확인합니다.
+2. 참가자 수, Twitch 표시 이름, 국가를 실시간으로 확인합니다.
 3. 당첨 인원을 정하고 추첨합니다.
 4. 주문·LINK 발급·귓속말 상태를 확인합니다.
 5. 이벤트를 초기화해 다음 시연을 준비합니다.
@@ -59,10 +62,12 @@ SodaGift의 국가별 상품 조회와 `LINK` 전달 방식을 사용하면 수�
 
 실제 연동 순서는 다음과 같습니다.
 
-1. `GET /v1/products` — 참가자 국가에서 `LINK` 전달이 가능하고 판매 중인 상품 조회
-2. `POST /v1/orders` — 당첨자별 주문 생성 및 외부 참조 ID로 중복 주문 방지
-3. `GET /v1/orders/{id}` — 주문 상태를 확인해 `delivery.link` 획득
-4. 참가자 개인 WebSocket과 Twitch 귓속말로 링크 전달
+1. 당첨자가 “선물 받기” 버튼 클릭
+2. `GET /v1/products` — 참가자 국가의 LINK 상품 중 기본 상품 자동 선택
+3. `POST /v1/orders` — 선택된 상품으로 LINK 주문 생성
+4. `GET /v1/orders/{id}` — `delivery.link` 획득
+5. 실제 수령 URL을 로그인한 Twitch 계정의 귓속말로 전송
+6. 당첨자가 SodaGift 사이트에서 상품을 수령
 
 API 키와 운영자 토큰은 서버 환경변수에만 저장합니다. 수령 링크는 링크를 가진 사람이 사용할 수 있는 민감 정보이므로 OBS나 공개 운영 데이터에 노출하지 않습니다.
 
@@ -74,12 +79,12 @@ API 키와 운영자 토큰은 서버 환경변수에만 저장합니다. 수령
 | 모바일 참여 | Twitch OAuth, 국가 선택, 참여·결과·수령 상태 표시 |
 | 운영자 화면 | 이벤트 시작, 참가자 확인, 복수 인원 추첨, 초기화 |
 | 실시간 동기화 | Overlay·Admin·참가자별 WebSocket 채널 |
-| SodaGift | 국가별 최저가 판매 상품 선택, LINK 주문, 결과 폴링, 재시도 |
+| SodaGift | 선물 받기 승인 후 국가별 기본 상품으로 LINK 주문, 결과 폴링, 재시도 |
 | Twitch | OAuth 사용자 식별, 당첨자 귓속말 발송 |
 | 데모 폴백 | API 키가 없으면 Mock Gift와 가상 Claim 페이지 사용 |
 | 지급 안정성 | 이벤트·사용자 기반 외부 참조 ID, 주문 결과 로그, 상품 캐시 |
 
-현재 이벤트 상태는 메모리에 저장되므로 서버를 재시작하면 초기화됩니다. 이는 하루짜리 데모를 빠르게 완성하기 위한 의도적인 범위 제한입니다.
+현재 이벤트 상태는 Firebase Firestore `events/live`에 저장됩니다. SodaGift API 키와 실제 주문 처리는 로컬 지급 브리지에만 두고, 공개 Firestore에는 상품 정보와 암호화된 수령 링크만 저장합니다.
 
 ## 5. 기술 구성
 
@@ -133,7 +138,6 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | OBS 오버레이 | <http://127.0.0.1:8000/overlay> |
 | 운영자 | <http://127.0.0.1:8000/admin?token=streamdrop> |
 | 참가자 | <http://127.0.0.1:8000/join> |
-| OAuth 없는 로컬 참가자 | <http://127.0.0.1:8000/join/dev?nick=demo1> |
 
 ### 환경변수
 
@@ -142,7 +146,6 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | 이름 | 용도 | 기본값/비고 |
 |---|---|---|
 | `BASE_URL` | QR·OAuth·Claim에 사용할 공개 주소 | `http://localhost:8000` |
-| `DEBUG` | `/join/dev` 데모 참여 허용 | `0`, 데모 시 `1` |
 | `ADMIN_TOKEN` | 운영자 화면 접근 토큰 | 데모 기본값 `streamdrop` |
 | `SECRET_KEY` | 참가자 세션 쿠키 서명 | 운영 환경에서 반드시 변경 |
 | `TWITCH_CLIENT_ID` | Twitch Developer 앱 ID | 실제 OAuth 시 필요 |
@@ -178,7 +181,7 @@ Twitch OAuth Redirect URL에는 `{BASE_URL}/join/callback`을 정확히 등록�
 4. OBS와 운영자 화면의 참가자 수가 증가하는 것을 확인합니다.
 5. 운영자가 당첨 인원을 설정하고 **추첨**을 누릅니다.
 6. OBS에서 당첨자가 발표되고 각 휴대폰에는 당첨·미당첨 결과가 구분됩니다.
-7. 당첨자 휴대폰에서만 SodaGift 또는 Mock Claim 링크를 엽니다.
+7. 당첨자가 **선물 받기**를 누르면 실제 SodaGift LINK가 Twitch 귓속말로 전송됩니다.
 8. 이벤트를 초기화하고 전체 흐름을 한 번 더 재현합니다.
 
 **데모 완료 기준:** 휴대폰 3대 참여 → 1명 이상 추첨 → 당첨자에게만 LINK 노출 → 초기화 후 재실행.

@@ -13,7 +13,7 @@
 <div class="ad hidden" id="console">
   <h1>Stream<span>Drop</span> 운영자 콘솔</h1>
   <div class="env">
-    공개 도메인: <span class="badge ok">hackathon-korean.web.app</span>
+    공개 도메인: <span class="badge ok">hackathon-korean-team5.web.app</span>
     &nbsp; 실시간: <span class="badge ok">Firestore</span>
     &nbsp; Twitch: <span id="twitch-badge" class="badge dim">미설정</span>
     &nbsp; SodaGift: <span id="soda-badge" class="badge dim">미연결</span>
@@ -36,8 +36,8 @@
   <section>
     <h2>당첨자 / 지급 현황</h2>
     <table>
-      <thead><tr><th>닉네임</th><th>국가</th><th>상품</th><th>주문</th><th>링크</th><th>귓속말</th></tr></thead>
-      <tbody id="winners"><tr><td colspan="6" style="color:var(--muted)">추첨 전</td></tr></tbody>
+      <thead><tr><th>Twitch 계정</th><th>국가</th><th>상품</th><th>주문</th><th>상태</th><th>귓속말</th><th>SodaGift URL</th></tr></thead>
+      <tbody id="winners"><tr><td colspan="7" style="color:var(--muted)">추첨 전</td></tr></tbody>
     </table>
   </section>
 </div>
@@ -55,8 +55,71 @@ if (token !== window.STREAMDROP_ADMIN_TOKEN) {
 }
 
 const STATUS_LABEL = { idle: ["대기", "dim"], open: ["접수중", "ok"], drawn: ["추첨완료", "warn"] };
-const W_STATUS = { pending: ["대기", "dim"], ordering: ["주문중…", "warn"], link_ready: ["✅ 발급됨", "ok"], failed: ["❌ 실패", "err"] };
-const WH_STATUS = { skipped: ["—", "dim"], sending: ["발송중…", "warn"], sent: ["✅ 전송됨", "ok"], failed: ["❌ 실패", "err"] };
+const W_STATUS = { pending: ["수령 대기", "dim"], claim_requested: ["LINK 요청", "warn"], choice_required: ["선택 대기", "warn"], order_approved: ["주문 승인", "warn"], ordering: ["주문중…", "warn"], link_ready: ["✅ 발급됨", "ok"], failed: ["❌ 실패", "err"] };
+const WH_STATUS = { skipped: ["—", "dim"], sending: ["발송중…", "warn"], sent: ["✅ Twitch 접수", "ok"], failed: ["❌ 실패", "err"] };
+
+const ADMIN_KEY_STORAGE = "sd_admin_claim_keys";
+let adminClaimKeys = null;
+
+function adminBytesFromBase64Url(value) {
+  const base64 = value.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((value.length + 3) % 4);
+  return Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+}
+
+async function ensureAdminClaimKeys() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ADMIN_KEY_STORAGE) || "null");
+    if (saved?.keyId && saved?.publicKey && saved?.privateKey) return saved;
+  } catch {
+    localStorage.removeItem(ADMIN_KEY_STORAGE);
+  }
+  const pair = await crypto.subtle.generateKey({
+    name: "RSA-OAEP",
+    modulusLength: 2048,
+    publicExponent: new Uint8Array([1, 0, 1]),
+    hash: "SHA-256",
+  }, true, ["encrypt", "decrypt"]);
+  const randomId = Array.from(crypto.getRandomValues(new Uint8Array(16)), (value) =>
+    value.toString(16).padStart(2, "0")
+  ).join("");
+  const keys = {
+    keyId: crypto.randomUUID ? crypto.randomUUID() : randomId,
+    publicKey: await crypto.subtle.exportKey("jwk", pair.publicKey),
+    privateKey: await crypto.subtle.exportKey("jwk", pair.privateKey),
+  };
+  localStorage.setItem(ADMIN_KEY_STORAGE, JSON.stringify(keys));
+  return keys;
+}
+
+async function publishAdminClaimKey(keys) {
+  await sdEventRef().set({
+    adminClaimKeyId: keys.keyId,
+    adminClaimPublicKey: keys.publicKey,
+    updatedAt: Date.now(),
+  }, { merge: true });
+}
+
+async function decryptAdminGift(encrypted) {
+  if (!adminClaimKeys?.privateKey) throw new Error("운영자 수령 키가 없습니다.");
+  const privateKey = await crypto.subtle.importKey(
+    "jwk", adminClaimKeys.privateKey,
+    { name: "RSA-OAEP", hash: "SHA-256" }, false, ["decrypt"],
+  );
+  const rawKey = await crypto.subtle.decrypt(
+    { name: "RSA-OAEP" }, privateKey, adminBytesFromBase64Url(encrypted.wrappedKey),
+  );
+  const aesKey = await crypto.subtle.importKey("raw", rawKey, "AES-GCM", false, ["decrypt"]);
+  const clear = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: adminBytesFromBase64Url(encrypted.iv) },
+    aesKey, adminBytesFromBase64Url(encrypted.ciphertext),
+  );
+  const parsed = new URL(new TextDecoder().decode(clear));
+  const host = parsed.hostname.toLowerCase();
+  if (parsed.protocol !== "https:" || !(host === "sodagift.com" || host.endsWith(".sodagift.com"))) {
+    throw new Error("SodaGift URL이 아닙니다.");
+  }
+  return parsed.href;
+}
 
 function badge(map, key) {
   const [label, cls] = map[key] || [key, "dim"];
@@ -72,7 +135,7 @@ function sample(list, n) {
   return copy.slice(0, Math.max(1, Math.min(n, copy.length)));
 }
 
-function render(data) {
+async function render(data) {
   const st = document.getElementById("status");
   const [label, cls] = STATUS_LABEL[data.status] || [data.status, "dim"];
   st.textContent = label; st.className = `badge ${cls}`;
@@ -80,17 +143,39 @@ function render(data) {
   const joined = sdJoinedList(data);
   document.getElementById("p-count").textContent = `${joined.length}/${people.length}`;
   document.getElementById("participants").innerHTML = people.length
-    ? people.map((p) => `<span class="chip">${p.nickname} · ${p.country || "대기"}${p.twitch ? " · Twitch" : ""}</span>`).join("")
-    : '<span style="color:var(--muted)">아직 없음</span>';
+    ? people.map((p) => `<span class="chip">${p.nickname} · ${p.country || "대기"}${p.twitch ? " · Twitch" : ""}${p.claimPublicKey ? "" : " · 수령키 없음"}</span>`).join("")
+    : `<span style="color:var(--muted)">아직 없음</span>`;
   const winners = data.winners || [];
   document.getElementById("winners").innerHTML = winners.length
-    ? winners.map((w) => `<tr>
+    ? winners.map((w, index) => `<tr>
         <td><b>${w.nickname}</b></td><td>${w.country}</td>
-        <td>${w.productName || "-"}</td><td>${w.orderId || "-"}</td>
+        <td>${w.productName || w.selectedProductName || "-"}</td><td>${w.orderId || "-"}</td>
         <td>${badge(W_STATUS, w.status)}</td>
         <td>${badge(WH_STATUS, w.whisperStatus || "skipped")}</td>
+        <td id="winner-url-${index}" style="max-width:320px;word-break:break-all">${w.status === "link_ready" ? "복호화 준비 중…" : "-"}</td>
       </tr>`).join("")
-    : '<tr><td colspan="6" style="color:var(--muted)">추첨 전</td></tr>';
+    : `<tr><td colspan="7" style="color:var(--muted)">추첨 전</td></tr>`;
+
+  await Promise.all(winners.map(async (winner, index) => {
+    const cell = document.getElementById("winner-url-" + index);
+    if (!cell || !winner.encryptedAdminGift) return;
+    if (!adminClaimKeys || winner.adminGiftKeyId !== adminClaimKeys.keyId) {
+      cell.textContent = "운영자 키 동기화 중…";
+      return;
+    }
+    try {
+      const link = await decryptAdminGift(winner.encryptedAdminGift);
+      const anchor = document.createElement("a");
+      anchor.href = link;
+      anchor.target = "_blank";
+      anchor.rel = "noopener";
+      anchor.textContent = link;
+      cell.replaceChildren(anchor);
+    } catch (error) {
+      console.error(error);
+      cell.textContent = "URL 복호화 실패";
+    }
+  }));
 }
 
 document.getElementById("btn-start").onclick = async () => {
@@ -151,7 +236,7 @@ document.getElementById("btn-draw").onclick = async () => {
   const data = snap.data() || sdEmptyEvent();
   if (data.status !== "open") { alert("이벤트가 열린 상태에서만 추첨할 수 있습니다."); return; }
   const people = sdJoinedList(data);
-  if (!people.length) { alert("국가까지 선택한 참가자가 없습니다."); return; }
+  if (!people.length) { alert("국가 선택과 선물 수령 준비를 완료한 참가자가 없습니다. 참가자 화면을 새로고침한 뒤 다시 참여해 주세요."); return; }
   const count = parseInt(document.getElementById("draw-count").value, 10) || 1;
   const picked = sample(people, count);
   const winners = picked.map((p) => ({
@@ -197,7 +282,12 @@ document.getElementById("btn-draw").onclick = async () => {
 
 document.getElementById("btn-reset").onclick = async () => {
   if (!confirm("정말 초기화할까요?")) return;
-  await sdEventRef().set(sdEmptyEvent());
+  const next = sdEmptyEvent();
+  if (adminClaimKeys) {
+    next.adminClaimKeyId = adminClaimKeys.keyId;
+    next.adminClaimPublicKey = adminClaimKeys.publicKey;
+  }
+  await sdEventRef().set(next);
 };
 
 if (token === window.STREAMDROP_ADMIN_TOKEN) {

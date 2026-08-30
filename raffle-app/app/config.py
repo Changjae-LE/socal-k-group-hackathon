@@ -6,9 +6,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
-PUBLIC_JOIN_URL = os.getenv("PUBLIC_JOIN_URL", "https://hackathon-korean.web.app/join").rstrip("/")
+PUBLIC_JOIN_URL = os.getenv("PUBLIC_JOIN_URL", "https://hackathon-korean-team5.web.app/join").rstrip("/")
 if "localhost" in PUBLIC_JOIN_URL or "127.0.0.1" in PUBLIC_JOIN_URL:
-    PUBLIC_JOIN_URL = "https://hackathon-korean.web.app/join"
+    PUBLIC_JOIN_URL = "https://hackathon-korean-team5.web.app/join"
 TWITCH_REDIRECT_URI = os.getenv("TWITCH_REDIRECT_URI", PUBLIC_JOIN_URL)
 if "localhost" in TWITCH_REDIRECT_URI or "127.0.0.1" in TWITCH_REDIRECT_URI:
     TWITCH_REDIRECT_URI = PUBLIC_JOIN_URL
@@ -27,6 +27,16 @@ else:
     SODAGIFT_BASE_URL = _soda_raw
 SODAGIFT_BALANCE_PATH = "/v1/accounts/balance"
 GIFT_SENDER_NAME = os.getenv("GIFT_SENDER_NAME", "StreamDrop")
+
+# 낙첨자 AI 추천 (미설정 시 랜덤 fallback 추천으로 동작)
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+
+# 공개 Firestore 이벤트와 로컬 SodaGift 지급 브리지를 연결한다.
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "hackathon-korean")
+FIREBASE_WEB_API_KEY = os.getenv("FIREBASE_WEB_API_KEY", "AIzaSyDLJZCsHtidnHpOEeEUqT1aX1kdYO8Yz7A")
+FIRESTORE_EVENT_DOCUMENT = os.getenv("FIRESTORE_EVENT_DOCUMENT", "events/live").strip("/")
+FIRESTORE_POLL_INTERVAL = float(os.getenv("FIRESTORE_POLL_INTERVAL", "1.5"))
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "streamdrop")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")

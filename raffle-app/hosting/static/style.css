@@ -95,6 +95,19 @@ select.country, input.nick-input { width: 100%; padding: 14px; border-radius: 12
 .win h2 { color: var(--gold); font-size: 24px; }
 .lose h2 { color: var(--muted); font-size: 20px; }
 .gift-note { color: var(--muted); font-size: 13px; margin-top: 12px; line-height: 1.5; }
+#gift-picker { margin-top: 16px; }
+.gift-options { display: grid; gap: 10px; margin-bottom: 12px; }
+.gift-option {
+  width: 100%; display: flex; align-items: center; gap: 12px; text-align: left;
+  padding: 10px; border: 2px solid #33334a; border-radius: 13px;
+  background: var(--card2); color: var(--text); cursor: pointer;
+}
+.gift-option.selected { border-color: var(--accent); background: #12352d; }
+.gift-option img { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; background: #fff; }
+.gift-option span { min-width: 0; display: grid; gap: 4px; }
+.gift-option strong { font-size: 14px; line-height: 1.25; }
+.gift-option small { color: var(--gold); font-size: 12px; }
+#gift-approve:disabled { opacity: .45; cursor: not-allowed; }
 .error-box { background:#3b0d1a; color:var(--danger); border-radius:10px; padding:10px; font-size:13px; margin-bottom:14px; }
 
 /* ---------- overlay (OBS) ---------- */
@@ -135,6 +148,16 @@ select.country, input.nick-input { width: 100%; padding: 14px; border-radius: 12
 .ad table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 14px; overflow: hidden; }
 .ad th, .ad td { text-align: left; padding: 12px 14px; font-size: 14px; border-bottom: 1px solid #26263a; }
 .ad th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+
+/* ---------- 낙첨자 AI 추천 ---------- */
+.recs-title { margin: 22px 0 12px; font-size: 14px; font-weight: 700; }
+.rec-card { display: flex; gap: 12px; align-items: center; background: var(--card2); border-radius: 14px; padding: 12px; margin-top: 10px; text-align: left; }
+.rec-card img { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; flex-shrink: 0; background: #33334a; }
+.rec-info { min-width: 0; }
+.rec-brand { color: var(--muted); font-size: 11px; }
+.rec-name { font-size: 14px; font-weight: 700; margin: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-price { color: var(--accent); font-size: 13px; font-weight: 700; }
+.rec-reason { color: var(--muted); font-size: 12px; margin-top: 4px; line-height: 1.4; }
 
 /* ---------- claim / home ---------- */
 .claim-wrap, .home-wrap { max-width: 430px; margin: 0 auto; padding: 60px 24px; text-align: center; }
