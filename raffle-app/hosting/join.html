@@ -75,8 +75,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js"></script>
-<script src="/js/event.js"></script>
+<script src="/js/firebase-config.js?v=3"></script>
+<script src="/js/event.js?v=3"></script>
 <script>
 const SESSION_KEY = "sd_session";
 const COUNTRIES = { KR:"🇰🇷 South Korea", US:"🇺🇸 United States", JP:"🇯🇵 Japan", CA:"🇨🇦 Canada", AU:"🇦🇺 Australia", GB:"🇬🇧 United Kingdom", FR:"🇫🇷 France", SG:"🇸🇬 Singapore", HK:"🇭🇰 Hong Kong", TW:"🇹🇼 Taiwan", PH:"🇵🇭 Philippines", TH:"🇹🇭 Thailand", VN:"🇻🇳 Vietnam", MY:"🇲🇾 Malaysia", ID:"🇮🇩 Indonesia", IN:"🇮🇳 India", CN:"🇨🇳 China" };
@@ -114,16 +114,13 @@ async function registerOnPublicEvent(session) {
 
 if (window.STREAMDROP_TWITCH_CLIENT_ID) {
   const btn = document.getElementById("btn-twitch");
+  const twitchAuth = "https://id.twitch.tv/oauth2/authorize?" + new URLSearchParams({
+    client_id: window.STREAMDROP_TWITCH_CLIENT_ID,
+    redirect_uri: "https://hackathon-korean.web.app/join",
+    response_type: "token",
+  });
+  btn.href = twitchAuth;
   btn.classList.remove("hidden");
-  btn.onclick = (ev) => {
-    ev.preventDefault();
-    location.href = "https://id.twitch.tv/oauth2/authorize?" + new URLSearchParams({
-      client_id: window.STREAMDROP_TWITCH_CLIENT_ID,
-      redirect_uri: sdJoinUrl(),
-      response_type: "token",
-      force_verify: "false",
-    });
-  };
 }
 
 async function consumeTwitchHash() {

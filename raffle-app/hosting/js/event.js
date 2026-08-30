@@ -3,15 +3,16 @@ function sdPublicUrl() {
 }
 
 function sdJoinUrl() {
-  return `${sdPublicUrl()}/join`;
+  return window.STREAMDROP_TWITCH_REDIRECT_URI || `${sdPublicUrl()}/join`;
 }
 
 function sdSendTwitchReturnToPublicJoin() {
   const publicJoin = sdJoinUrl();
   const here = `${location.origin}${location.pathname}`.replace(/\/$/, "");
+  const onLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
   const hasToken = location.hash.includes("access_token");
   const hasCode = /[?&]code=/.test(location.search);
-  if ((hasToken || hasCode) && here !== publicJoin) {
+  if (onLocal || ((hasToken || hasCode) && here !== publicJoin)) {
     location.replace(publicJoin + location.search + location.hash);
     return true;
   }

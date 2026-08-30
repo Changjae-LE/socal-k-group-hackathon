@@ -8,7 +8,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from itsdangerous import BadSignature, URLSafeSerializer
 
 from app import config, state
-from app.services import twitch
 from app.web import templates
 from app.ws import hub
 
@@ -59,28 +58,22 @@ def _page_context(request: Request) -> dict:
 
 @router.get("/join", response_class=HTMLResponse)
 async def join_page(request: Request):
-    return templates.TemplateResponse(request, "join.html", _page_context(request))
+    dest = config.PUBLIC_JOIN_URL or "https://hackathon-korean.web.app/join"
+    if "localhost" in dest or "127.0.0.1" in dest:
+        dest = "https://hackathon-korean.web.app/join"
+    q = request.url.query
+    return RedirectResponse(f"{dest}?{q}" if q else dest)
 
 
 @router.get("/join/login")
 async def join_login():
-    st = secrets.token_urlsafe(16)
-    now = time.time()
-    _oauth_states[st] = now
-    for k, v in list(_oauth_states.items()):  # 오래된 state 정리
-        if now - v > 600:
-            _oauth_states.pop(k, None)
-    return RedirectResponse(twitch.authorize_url(st))
+    return RedirectResponse("https://hackathon-korean.web.app/join")
 
 
 @router.get("/join/callback", response_class=HTMLResponse)
 async def join_callback():
-    """Twitch may still have localhost /join/callback registered.
-
-    The access token lives in the URL hash, which the server never sees,
-    so bounce the browser to the public Hosting /join page and continue there.
-    """
-    dest = config.PUBLIC_JOIN_URL
+    """Old Twitch apps may still return to localhost /join/callback."""
+    dest = "https://hackathon-korean.web.app/join"
     return HTMLResponse(
         f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>Returning…</title></head>
 <body><script>

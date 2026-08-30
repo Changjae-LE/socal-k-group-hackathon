@@ -12,9 +12,15 @@ AUTH_BASE = "https://id.twitch.tv/oauth2"
 HELIX = "https://api.twitch.tv/helix"
 
 
+PUBLIC_JOIN = "https://hackathon-korean.web.app/join"
+
+
 def redirect_uri() -> str:
-    """QR/phones always return to the public Hosting join page, not localhost."""
-    return config.TWITCH_REDIRECT_URI
+    """Participant OAuth always returns to public Hosting, never localhost."""
+    uri = (config.TWITCH_REDIRECT_URI or PUBLIC_JOIN).rstrip("/")
+    if "localhost" in uri or "127.0.0.1" in uri:
+        return PUBLIC_JOIN
+    return uri or PUBLIC_JOIN
 
 
 def authorize_url(state: str) -> str:
