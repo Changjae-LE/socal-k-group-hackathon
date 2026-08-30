@@ -12,7 +12,7 @@ AUTH_BASE = "https://id.twitch.tv/oauth2"
 HELIX = "https://api.twitch.tv/helix"
 
 
-PUBLIC_JOIN = "https://hackathon-korean.web.app/join"
+PUBLIC_JOIN = "https://hackathon-korean-team5.web.app/join"
 
 
 def redirect_uri() -> str:

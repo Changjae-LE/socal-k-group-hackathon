@@ -6,9 +6,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
-PUBLIC_JOIN_URL = os.getenv("PUBLIC_JOIN_URL", "https://hackathon-korean.web.app/join").rstrip("/")
+PUBLIC_JOIN_URL = os.getenv("PUBLIC_JOIN_URL", "https://hackathon-korean-team5.web.app/join").rstrip("/")
 if "localhost" in PUBLIC_JOIN_URL or "127.0.0.1" in PUBLIC_JOIN_URL:
-    PUBLIC_JOIN_URL = "https://hackathon-korean.web.app/join"
+    PUBLIC_JOIN_URL = "https://hackathon-korean-team5.web.app/join"
 TWITCH_REDIRECT_URI = os.getenv("TWITCH_REDIRECT_URI", PUBLIC_JOIN_URL)
 if "localhost" in TWITCH_REDIRECT_URI or "127.0.0.1" in TWITCH_REDIRECT_URI:
     TWITCH_REDIRECT_URI = PUBLIC_JOIN_URL

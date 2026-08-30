@@ -1,5 +1,5 @@
 function sdPublicUrl() {
-  return (window.STREAMDROP_PUBLIC_URL || "https://hackathon-korean.web.app").replace(/\/$/, "");
+  return (window.STREAMDROP_PUBLIC_URL || "https://hackathon-korean-team5.web.app").replace(/\/$/, "");
 }
 
 function sdJoinUrl() {

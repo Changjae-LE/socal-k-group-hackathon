@@ -58,22 +58,22 @@ def _page_context(request: Request) -> dict:
 
 @router.get("/join", response_class=HTMLResponse)
 async def join_page(request: Request):
-    dest = config.PUBLIC_JOIN_URL or "https://hackathon-korean.web.app/join"
+    dest = config.PUBLIC_JOIN_URL or "https://hackathon-korean-team5.web.app/join"
     if "localhost" in dest or "127.0.0.1" in dest:
-        dest = "https://hackathon-korean.web.app/join"
+        dest = "https://hackathon-korean-team5.web.app/join"
     q = request.url.query
     return RedirectResponse(f"{dest}?{q}" if q else dest)
 
 
 @router.get("/join/login")
 async def join_login():
-    return RedirectResponse("https://hackathon-korean.web.app/join")
+    return RedirectResponse("https://hackathon-korean-team5.web.app/join")
 
 
 @router.get("/join/callback", response_class=HTMLResponse)
 async def join_callback():
     """Old Twitch apps may still return to localhost /join/callback."""
-    dest = "https://hackathon-korean.web.app/join"
+    dest = "https://hackathon-korean-team5.web.app/join"
     return HTMLResponse(
         f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>Returning…</title></head>
 <body><script>

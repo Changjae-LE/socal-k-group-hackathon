@@ -7,7 +7,7 @@ StreamDrop은 전 세계 시청자가 함께하는 Twitch 방송에서 이벤트
 - 발표 자료: [StreamDrop Twitch 해커톤 기획안 v2](Demo/Presentation/StreamDrop_Twitch_%ED%95%B4%EC%BB%A4%ED%86%A4_%EA%B8%B0%ED%9A%8D%EC%95%88_v2.pptx)
 - 최종 통합 데모: [`raffle-app`](raffle-app)
 - 초기 OBS 오버레이 프로토타입: [`streamdrop-app`](streamdrop-app)
-- 공개 Hosting: https://hackathon-korean.web.app — 참여 `/join`, 오버레이 `/overlay`, 운영 `/admin?token=streamdrop`
+- 공개 Hosting: https://hackathon-korean-team5.web.app — 참여 `/join`, 오버레이 `/overlay`, 운영 `/admin?token=streamdrop`
 
 ## 1. 해결하려는 문제
 

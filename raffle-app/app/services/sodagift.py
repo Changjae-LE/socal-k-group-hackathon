@@ -34,10 +34,29 @@ def mock_mode() -> bool:
 
 
 def _log_order(record: dict) -> None:
-    """지급 사고 대비: 발급된 주문/링크를 파일에 영속 기록."""
-    record["ts"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    """지급 사고 대비용 기록. 수령 URL은 절대 평문으로 저장하지 않는다."""
+    safe_record = {key: value for key, value in record.items() if key != "link"}
+    safe_record["link_issued"] = bool(record.get("link"))
+    safe_record["ts"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     with open("orders.log", "a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        f.write(json.dumps(safe_record, ensure_ascii=False) + "\n")
+
+
+def _product_rank(product: dict, price: float) -> tuple[int, int, float]:
+    """Prefer fixed-price brand gifts for a predictable hackathon demo."""
+    name = str(product.get("name") or "").lower()
+    custom_amount = (
+        product.get("min_amount") is not None
+        and product.get("max_amount") is not None
+    )
+    generic_prepaid = any(token in name for token in (
+        "prepaid", "mastercard", "universal", "promotional",
+    ))
+    return (
+        1 if custom_amount else 0,
+        1 if generic_prepaid else 0,
+        price,
+    )
 
 
 async def select_product(country: str) -> dict:
@@ -65,12 +84,12 @@ async def select_product(country: str) -> dict:
         price = p.get("amount") or p.get("min_amount")
         if price is None:
             continue
-        candidates.append((float(price), p))
+        candidates.append((_product_rank(p, float(price)), p))
     if not candidates:
         raise SodaGiftError(f"no LINK-deliverable product for country {country}")
 
     candidates.sort(key=lambda t: t[0])
-    _, product = candidates[0]
+    _rank, product = candidates[0]
     _product_cache[country] = product
     log.info("selected product for %s: [%s] %s", country, product["id"], product.get("name"))
     return product
@@ -88,8 +107,12 @@ async def _create_order(product: dict, recipient_name: str, ref_id: str) -> int:
         # 영숫자만 허용 (멱등키)
         "external_reference_id": ref_id,
     }
-    # custom amount 상품이면 최소 금액으로 주문
-    if product.get("amount") is None and product.get("min_amount") is not None:
+    # API 문서 기준: min/max_amount가 함께 반환되면 custom_amount 필수.
+    # catalog의 amount가 함께 있더라도 가변금액 상품으로 판단한다.
+    if (
+        product.get("min_amount") is not None
+        and product.get("max_amount") is not None
+    ):
         body["item"]["custom_amount"] = product["min_amount"]
 
     async with httpx.AsyncClient(base_url=config.SODAGIFT_BASE_URL, headers=HEADERS, timeout=20) as client:

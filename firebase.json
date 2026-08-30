@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "hackathon-korean-team5",
     "public": "raffle-app/hosting",
     "cleanUrls": true,
     "ignore": [

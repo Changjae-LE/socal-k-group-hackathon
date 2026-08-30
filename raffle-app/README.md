@@ -5,14 +5,14 @@ QR 스캔 → Twitch 로그인 참여 → 추첨 → 당첨자 폰 + Twitch 귓�
 
 ## 공개 Hosting (Firebase, 무료)
 
-`raffle-app/hosting`을 `hackathon-korean` Firebase Hosting에 올립니다. 휴대폰 참여는 localhost가 아니라 Firestore `events/live`로 바로 저장되고, 운영자/오버레이가 같은 문서를 구독합니다.
+`raffle-app/hosting`을 Firebase 프로젝트 `hackathon-korean`의 Team5 Hosting 사이트에 올립니다. 휴대폰 참여는 localhost가 아니라 Firestore `events/live`로 바로 저장되고, 운영자/오버레이가 같은 문서를 구독합니다.
 
-- 홈: https://hackathon-korean.web.app
-- 참여: https://hackathon-korean.web.app/join
-- 오버레이: https://hackathon-korean.web.app/overlay
-- 운영자: https://hackathon-korean.web.app/admin?token=streamdrop
+- 홈: https://hackathon-korean-team5.web.app
+- 참여: https://hackathon-korean-team5.web.app/join
+- 오버레이: https://hackathon-korean-team5.web.app/overlay
+- 운영자: https://hackathon-korean-team5.web.app/admin?token=streamdrop
 
-Twitch 콘솔 Redirect URL에는 `https://hackathon-korean.web.app/join` (그리고 예비용 `/join/callback`)을 넣으세요. 로그인 성공 후 항상 이 공개 `/join`으로 돌아옵니다. localhost로 돌아오면 안 됩니다.
+Twitch 콘솔 Redirect URL에는 `https://hackathon-korean-team5.web.app/join` (그리고 예비용 `/join/callback`)을 넣으세요. 로그인 성공 후 항상 이 공개 `/join`으로 돌아옵니다. localhost로 돌아오면 안 됩니다.
 
 ```bash
 npx firebase deploy --only hosting,firestore --project hackathon-korean
@@ -50,11 +50,11 @@ cloudflared tunnel --url http://localhost:8000
 ```
 발급된 `https://xxx.trycloudflare.com`을:
 1. `.env`의 `BASE_URL`에 넣고 서버 재시작 (QR·귓속말 링크에 반영)
-2. 참가자 Twitch 로그인은 공개 Hosting `/join`으로 복귀합니다. Redirect URL에 `https://hackathon-korean.web.app/join`을 등록하세요.
+2. 참가자 Twitch 로그인은 공개 Hosting `/join`으로 복귀합니다. Redirect URL에 `https://hackathon-korean-team5.web.app/join`을 등록하세요.
 
 ## Twitch 설정
 1. https://dev.twitch.tv/console/apps 에서 앱 생성 → `TWITCH_CLIENT_ID/SECRET`
-2. Redirect URL: `https://hackathon-korean.web.app/join` (필수), `https://hackathon-korean.web.app/join/callback` (예비)
+2. Redirect URL: `https://hackathon-korean-team5.web.app/join` (필수), `https://hackathon-korean-team5.web.app/join/callback` (예비)
 3. 귓속말 발신 계정(전화번호 인증 필수)으로 토큰 발급:
    ```bash
    twitch token -u -s user:manage:whispers
@@ -68,7 +68,7 @@ cloudflared tunnel --url http://localhost:8000
 
 - base URL: `https://biz-sandbox-api.sodagift.com`, 헤더 `SODA-API-KEY`
 - 흐름: `GET /v1/products?country_code=XX&delivery_method=LINK` → 최저가 ON_SALE 상품 → `POST /v1/orders`(LINK, 멱등키) → `GET /v1/orders/{id}` 폴링 → `order_items[].delivery.link`
-- 발급된 링크는 `orders.log`에도 기록됨 (지급 사고 대비)
+- `orders.log`에는 주문 식별 정보만 기록하며 수령 URL은 평문으로 저장하지 않음
 - ⚠️ 수령 링크 보유자 = 수령자. API 키와 평문 링크는 Hosting/Firestore에 저장하지 않습니다.
 
 ### 공개 Firebase 당첨자에게 실제 LINK 지급
@@ -81,6 +81,9 @@ python scripts/fulfill_firestore_winners.py --dry-run
 
 # Firestore 당첨 감지 → SodaGift 주문 → 암호화된 링크 전달
 python scripts/fulfill_firestore_winners.py
+
+# 오류 원인을 수정한 뒤 실패한 지급 1건 재시도
+python scripts/fulfill_firestore_winners.py --once --retry-failed
 ```
 
 참가자 브라우저는 참여 시 수령용 공개키를 Firestore에 등록하고 개인키를 해당 기기에만 보관합니다. 지급 브리지는 SodaGift LINK를 암호화해 Firestore에 저장하므로 당첨자가 참여했던 기기만 링크를 열 수 있습니다. `--once`를 사용하면 당첨자 한 명만 처리하고 종료합니다.

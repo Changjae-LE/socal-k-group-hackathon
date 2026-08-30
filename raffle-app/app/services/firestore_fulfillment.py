@@ -210,6 +210,27 @@ def fulfillment_candidates(data: dict[str, Any]) -> list[dict[str, Any]]:
     return candidates
 
 
+async def reset_failed_winners(store: FirestoreEventStore) -> int:
+    """Move failed, unfulfilled winners back to pending only on explicit request."""
+    for _ in range(4):
+        snapshot = await store.get_event()
+        if not snapshot or snapshot.data.get("status") != "drawn":
+            return 0
+        winners = copy.deepcopy(snapshot.data.get("winners") or [])
+        reset_count = 0
+        for winner in winners:
+            if winner.get("status") == "failed" and not winner.get("encryptedGift"):
+                winner["status"] = "pending"
+                winner.pop("error", None)
+                reset_count += 1
+        if not reset_count:
+            return 0
+        if await store.replace_winners(winners, snapshot.update_time):
+            return reset_count
+        await asyncio.sleep(0.15)
+    raise RuntimeError("failed winner state changed repeatedly during retry reset")
+
+
 async def _mutate_winner(
     store: FirestoreEventStore,
     event_id: str,

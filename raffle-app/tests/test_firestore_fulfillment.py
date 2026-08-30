@@ -2,18 +2,21 @@ import base64
 import copy
 import json
 import unittest
+from unittest.mock import mock_open, patch
 
 import httpx
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from app.services import sodagift
 from app.services.firestore_fulfillment import (
     EventSnapshot,
     FirestoreEventStore,
     _decode_value,
     _encode_value,
     fulfill_once,
+    reset_failed_winners,
 )
 
 
@@ -149,6 +152,95 @@ class FulfillmentTests(unittest.IsolatedAsyncioTestCase):
             "2026-01-01T00:00:00Z",
         ))
         await client.aclose()
+
+    async def test_order_includes_custom_amount_for_ranged_product(self) -> None:
+        class Response:
+            def __init__(self, status_code: int, text: str, payload: dict | None = None) -> None:
+                self.status_code = status_code
+                self.text = text
+                self._payload = payload or {}
+
+            def json(self) -> dict:
+                return self._payload
+
+        class Client:
+            def __init__(self) -> None:
+                self.items = []
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_exc):
+                return None
+
+            async def post(self, _path: str, json: dict):
+                self.items.append(copy.deepcopy(json["item"]))
+                return Response(200, "", {"id": 321})
+
+        client = Client()
+        with patch("app.services.sodagift.httpx.AsyncClient", return_value=client):
+            order_id = await sodagift._create_order(
+                {
+                    "id": 50008,
+                    "amount": 1.0,
+                    "min_amount": 1.0,
+                    "max_amount": 999.0,
+                },
+                "winner",
+                "ref123",
+            )
+
+        self.assertEqual(order_id, 321)
+        self.assertEqual(client.items, [{"id": 50008, "custom_amount": 1.0}])
+
+    async def test_failed_winner_requires_explicit_reset(self) -> None:
+        store = FakeStore({
+            "status": "drawn",
+            "eventId": "event03",
+            "participants": {},
+            "winners": [{"uid": "1", "status": "failed", "error": "temporary"}],
+        })
+
+        self.assertEqual(await reset_failed_winners(store), 1)
+        self.assertEqual(store.data["winners"][0]["status"], "pending")
+        self.assertNotIn("error", store.data["winners"][0])
+
+    def test_brand_product_ranks_before_generic_prepaid_card(self) -> None:
+        prepaid = sodagift._product_rank(
+            {"name": "Virtual Prepaid Mastercard", "min_amount": 1, "max_amount": 999},
+            1.0,
+        )
+        brand = sodagift._product_rank(
+            {"name": "Tim Horton's E-Gift", "min_amount": 5, "max_amount": 100},
+            5.0,
+        )
+
+        self.assertLess(brand, prepaid)
+
+    def test_fixed_product_ranks_before_custom_amount_product(self) -> None:
+        fixed = sodagift._product_rank(
+            {"name": "Red Lobster Gift Card", "min_amount": None, "max_amount": None},
+            10.0,
+        )
+        ranged = sodagift._product_rank(
+            {"name": "Tim Horton's E-Gift", "min_amount": 5, "max_amount": 100},
+            5.0,
+        )
+
+        self.assertLess(fixed, ranged)
+
+    def test_order_log_never_persists_plain_claim_link(self) -> None:
+        writer = mock_open()
+        with patch("builtins.open", writer):
+            sodagift._log_order({
+                "order_id": "123",
+                "link": "https://gift.example/private-claim-token",
+            })
+
+        payload = json.loads(writer().write.call_args.args[0])
+        self.assertNotIn("link", payload)
+        self.assertNotIn("private-claim-token", str(payload))
+        self.assertTrue(payload["link_issued"])
 
     def test_firestore_value_round_trip(self) -> None:
         value = {"items": [{"ok": True, "count": 2}], "empty": [], "none": None}

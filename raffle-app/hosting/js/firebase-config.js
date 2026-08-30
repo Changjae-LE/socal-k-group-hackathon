@@ -4,11 +4,11 @@ window.STREAMDROP_FIREBASE = {
   projectId: "hackathon-korean",
   storageBucket: "hackathon-korean.firebasestorage.app",
   messagingSenderId: "38057711918",
-  appId: "1:38057711918:web:0bae4318b79f8bac5682bf",
+  appId: "1:38057711918:web:bae6f2e3cf22441e5682bf",
 };
 window.STREAMDROP_ADMIN_TOKEN = "streamdrop";
-window.STREAMDROP_PUBLIC_URL = "https://hackathon-korean.web.app";
-window.STREAMDROP_TWITCH_REDIRECT_URI = "https://hackathon-korean.web.app/join";
+window.STREAMDROP_PUBLIC_URL = "https://hackathon-korean-team5.web.app";
+window.STREAMDROP_TWITCH_REDIRECT_URI = "https://hackathon-korean-team5.web.app/join";
 // Public Twitch Client ID only. Register Redirect URL:
-// https://hackathon-korean.web.app/join
+// https://hackathon-korean-team5.web.app/join
 window.STREAMDROP_TWITCH_CLIENT_ID = "bnppeajglhm2h0r0d615yzbb6kzfj1";
