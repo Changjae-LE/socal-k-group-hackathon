@@ -5,12 +5,14 @@ QR 스캔 → Twitch 로그인 참여 → 추첨 → 당첨자 폰 + Twitch 귓�
 
 ## 공개 Hosting (Firebase, 무료)
 
-`raffle-app/hosting`을 `hackathon-korean` Firebase Hosting에 올립니다. 오버레이·참여·운영 화면이 Firestore로 실시간 동기화됩니다.
+`raffle-app/hosting`을 `hackathon-korean` Firebase Hosting에 올립니다. 휴대폰 참여는 localhost가 아니라 Firestore `events/live`로 바로 저장되고, 운영자/오버레이가 같은 문서를 구독합니다.
 
 - 홈: https://hackathon-korean.web.app
 - 참여: https://hackathon-korean.web.app/join
 - 오버레이: https://hackathon-korean.web.app/overlay
 - 운영자: https://hackathon-korean.web.app/admin?token=streamdrop
+
+Twitch 콘솔 앱의 Redirect URL에 `https://hackathon-korean.web.app/join`을 넣은 뒤 `raffle-app/hosting/js/firebase-config.js`의 `STREAMDROP_TWITCH_CLIENT_ID`를 채우면 공개 참여 화면에 Twitch 로그인이 켜집니다.
 
 ```bash
 npx firebase deploy --only hosting,firestore --project hackathon-korean

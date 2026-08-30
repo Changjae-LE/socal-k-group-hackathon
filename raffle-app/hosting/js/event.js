@@ -1,3 +1,7 @@
+function sdPublicUrl() {
+  return (window.STREAMDROP_PUBLIC_URL || location.origin).replace(/\/$/, "");
+}
+
 function sdDb() {
   if (!firebase.apps.length) firebase.initializeApp(window.STREAMDROP_FIREBASE);
   return firebase.firestore();
@@ -28,8 +32,33 @@ function sdParticipantList(data) {
   return Object.entries(data.participants || {}).map(([uid, p]) => ({ uid, ...p }));
 }
 
-function sdListenEvent(onData) {
-  return sdEventRef().onSnapshot((snap) => {
-    onData(snap.exists ? snap.data() : sdEmptyEvent());
-  });
+function sdJoinedList(data) {
+  return sdParticipantList(data).filter((p) => p.country);
+}
+
+async function sdWriteParticipant(uid, fields) {
+  await sdEnsureEvent();
+  const snap = await sdEventRef().get();
+  const data = snap.data() || sdEmptyEvent();
+  const prev = (data.participants || {})[uid] || {};
+  await sdEventRef().set({
+    [`participants.${uid}`]: {
+      nickname: fields.nickname || prev.nickname || "",
+      country: fields.country || prev.country || "",
+      joinedAt: prev.joinedAt || Date.now(),
+      twitch: Boolean(fields.twitch || prev.twitch),
+    },
+    updatedAt: Date.now(),
+  }, { merge: true });
+  return data.eventId;
+}
+
+function sdListenEvent(onData, onError) {
+  return sdEventRef().onSnapshot(
+    (snap) => onData(snap.exists ? snap.data() : sdEmptyEvent()),
+    (err) => {
+      console.error("Firestore listen failed", err);
+      if (onError) onError(err);
+    },
+  );
 }

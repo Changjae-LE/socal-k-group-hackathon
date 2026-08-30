@@ -14,15 +14,16 @@
   <div id="error-box" class="error-box hidden"></div>
 
   <div id="sec-login" class="card">
-    <p style="margin-bottom:8px">닉네임만 입력하면 바로 참여할 수 있어요</p>
+    <p style="margin-bottom:8px">Twitch로 참여하거나 닉네임을 입력하세요</p>
+    <a id="btn-twitch" class="btn twitch hidden" href="#">🟣 Twitch로 참여하기</a>
     <input id="nick-input" class="nick-input" minlength="2" maxlength="20" placeholder="방송에서 사용할 닉네임" required>
-    <button class="btn twitch" id="btn-login" type="button">이벤트 참여 시작</button>
+    <button class="btn" style="background:#33334a" id="btn-login" type="button">닉네임으로 참여</button>
   </div>
 
   <div id="sec-idle" class="card hidden">
     <div class="pulse"></div>
     <p><span class="nick" id="idle-nick"></span>님, 환영해요!</p>
-    <p class="gift-note">이벤트가 곧 시작됩니다. 화면을 유지해 주세요.</p>
+    <p class="gift-note">운영자 화면에 표시됐습니다. 이벤트가 열리면 국가를 선택하세요.</p>
   </div>
 
   <div id="sec-enter" class="card hidden">
@@ -80,6 +81,13 @@
 const SESSION_KEY = "sd_session";
 const COUNTRIES = { KR:"🇰🇷 South Korea", US:"🇺🇸 United States", JP:"🇯🇵 Japan", CA:"🇨🇦 Canada", AU:"🇦🇺 Australia", GB:"🇬🇧 United Kingdom", FR:"🇫🇷 France", SG:"🇸🇬 Singapore", HK:"🇭🇰 Hong Kong", TW:"🇹🇼 Taiwan", PH:"🇵🇭 Philippines", TH:"🇹🇭 Thailand", VN:"🇻🇳 Vietnam", MY:"🇲🇾 Malaysia", ID:"🇮🇩 Indonesia", IN:"🇮🇳 India", CN:"🇨🇳 China" };
 
+function showError(msg) {
+  const box = document.getElementById("error-box");
+  if (!msg) { box.classList.add("hidden"); return; }
+  box.textContent = msg;
+  box.classList.remove("hidden");
+}
+
 function show(id) {
   for (const sec of document.querySelectorAll(".card[id^='sec-']")) sec.classList.add("hidden");
   document.getElementById(id).classList.remove("hidden");
@@ -94,44 +102,96 @@ function saveSession(data) {
   localStorage.setItem(SESSION_KEY, JSON.stringify(data));
 }
 
-document.getElementById("btn-login").onclick = () => {
+async function registerOnPublicEvent(session) {
+  const eventId = await sdWriteParticipant(session.uid, {
+    nickname: session.nick,
+    country: session.country || "",
+    twitch: session.twitch,
+  });
+  session.eventId = eventId;
+  saveSession(session);
+}
+
+if (window.STREAMDROP_TWITCH_CLIENT_ID) {
+  const btn = document.getElementById("btn-twitch");
+  btn.classList.remove("hidden");
+  btn.onclick = (ev) => {
+    ev.preventDefault();
+    const redirect = `${sdPublicUrl()}/join`;
+    location.href = "https://id.twitch.tv/oauth2/authorize?" + new URLSearchParams({
+      client_id: window.STREAMDROP_TWITCH_CLIENT_ID,
+      redirect_uri: redirect,
+      response_type: "token",
+      scope: "",
+    });
+  };
+}
+
+async function consumeTwitchHash() {
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+  const token = hash.get("access_token");
+  if (!token || !window.STREAMDROP_TWITCH_CLIENT_ID) return false;
+  history.replaceState(null, "", location.pathname + location.search);
+  const res = await fetch("https://api.twitch.tv/helix/users", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Client-Id": window.STREAMDROP_TWITCH_CLIENT_ID,
+    },
+  });
+  if (!res.ok) throw new Error("Twitch 사용자 정보를 가져오지 못했습니다.");
+  const user = (await res.json()).data[0];
+  const session = {
+    uid: user.id,
+    nick: user.display_name || user.login,
+    country: "",
+    eventId: "",
+    twitch: true,
+  };
+  saveSession(session);
+  await registerOnPublicEvent(session);
+  return true;
+}
+
+document.getElementById("btn-login").onclick = async () => {
   const nick = document.getElementById("nick-input").value.trim();
-  if (nick.length < 2) {
-    document.getElementById("error-box").textContent = "닉네임을 2자 이상 입력해 주세요.";
-    document.getElementById("error-box").classList.remove("hidden");
-    return;
+  if (nick.length < 2) { showError("닉네임을 2자 이상 입력해 주세요."); return; }
+  showError("");
+  const session = {
+    uid: `p${Date.now().toString(16)}${Math.random().toString(16).slice(2, 6)}`,
+    nick,
+    country: "",
+    eventId: "",
+    twitch: false,
+  };
+  saveSession(session);
+  try {
+    await registerOnPublicEvent(session);
+    renderFromEvent(window.__eventData || sdEmptyEvent());
+  } catch (err) {
+    console.error(err);
+    showError("공개 서버에 참여 정보를 보내지 못했습니다. 잠시 후 다시 시도해 주세요.");
   }
-  saveSession({ uid: `p${Date.now().toString(16)}${Math.random().toString(16).slice(2, 6)}`, nick, country: "", eventId: "" });
-  document.getElementById("error-box").classList.add("hidden");
-  renderFromEvent(window.__eventData || sdEmptyEvent());
 };
 
 document.getElementById("btn-enter").onclick = async () => {
   const country = document.getElementById("country").value;
   const session = loadSession();
-  if (!country) {
-    document.getElementById("error-box").textContent = "국가를 선택해 주세요.";
-    document.getElementById("error-box").classList.remove("hidden");
-    return;
-  }
+  if (!country) { showError("국가를 선택해 주세요."); return; }
   if (!session) return;
   const data = window.__eventData;
   if (!data || data.status !== "open") {
-    document.getElementById("error-box").textContent = "이벤트가 아직 열리지 않았어요. 잠시 후 다시 시도해 주세요.";
-    document.getElementById("error-box").classList.remove("hidden");
+    showError("이벤트가 아직 열리지 않았어요. 잠시 후 다시 시도해 주세요.");
     return;
   }
   session.country = country;
-  session.eventId = data.eventId;
   saveSession(session);
-  await sdEventRef().set({
-    [`participants.${session.uid}`]: {
-      nickname: session.nick,
-      country,
-      joinedAt: Date.now(),
-    },
-    updatedAt: Date.now(),
-  }, { merge: true });
+  try {
+    await registerOnPublicEvent(session);
+    showError("");
+  } catch (err) {
+    console.error(err);
+    showError("참여 저장에 실패했습니다.");
+  }
 };
 
 function renderFromEvent(data) {
@@ -140,30 +200,44 @@ function renderFromEvent(data) {
   if (!session) { show("sec-login"); return; }
 
   const participant = (data.participants || {})[session.uid];
-  const joined = Boolean(participant) && session.eventId === data.eventId;
+  const joined = Boolean(participant && participant.country);
+  const waiting = Boolean(participant) && !joined;
   const winner = (data.winners || []).find((w) => w.uid === session.uid);
 
   document.getElementById("idle-nick").textContent = session.nick;
   document.getElementById("enter-nick").textContent = session.nick;
   document.getElementById("wait-nick").textContent = session.nick;
-  document.getElementById("wait-country").textContent = participant ? (COUNTRIES[participant.country] || participant.country) : "";
+  document.getElementById("wait-country").textContent = participant && participant.country
+    ? (COUNTRIES[participant.country] || participant.country)
+    : "";
 
-  if (data.status === "drawn" && joined) {
+  if (data.status === "drawn" && (joined || waiting || winner)) {
     if (winner) {
       document.getElementById("win-product").textContent = winner.productName || "StreamDrop Gift Card";
-      document.getElementById("gift-btn").href = winner.giftLink || `/claim?id=${session.uid}`;
+      document.getElementById("gift-btn").href = winner.giftLink || `${sdPublicUrl()}/claim?id=${session.uid}`;
       show("sec-win");
-    } else {
+    } else if (joined) {
       show("sec-lose");
+    } else {
+      show("sec-idle");
     }
     return;
   }
   if (joined && data.status === "open") { show("sec-wait"); return; }
-  if (data.status === "open") { show("sec-enter"); return; }
-  show("sec-idle");
+  if (data.status === "open" && session.uid) { show("sec-enter"); return; }
+  if (waiting || session.uid) { show("sec-idle"); return; }
+  show("sec-login");
 }
 
-sdEnsureEvent().then(() => sdListenEvent(renderFromEvent));
+sdEnsureEvent()
+  .then(() => consumeTwitchHash())
+  .catch((err) => {
+    console.error(err);
+    showError(err.message || "Twitch 로그인에 실패했습니다.");
+  })
+  .finally(() => {
+    sdListenEvent(renderFromEvent, () => showError("실시간 연결이 끊겼습니다. 페이지를 새로고침해 주세요."));
+  });
 </script>
 </body>
 </html>

@@ -13,8 +13,9 @@
 <div class="ad hidden" id="console">
   <h1>Stream<span>Drop</span> 운영자 콘솔</h1>
   <div class="env">
-    SodaGift: <span class="badge warn">MOCK 모드</span>
+    공개 도메인: <span class="badge ok">hackathon-korean.web.app</span>
     &nbsp; 실시간: <span class="badge ok">Firestore</span>
+    &nbsp; Twitch: <span id="twitch-badge" class="badge dim">미설정</span>
   </div>
 
   <div class="controls">
@@ -74,9 +75,10 @@ function render(data) {
   const [label, cls] = STATUS_LABEL[data.status] || [data.status, "dim"];
   st.textContent = label; st.className = `badge ${cls}`;
   const people = sdParticipantList(data);
-  document.getElementById("p-count").textContent = people.length;
+  const joined = sdJoinedList(data);
+  document.getElementById("p-count").textContent = `${joined.length}/${people.length}`;
   document.getElementById("participants").innerHTML = people.length
-    ? people.map((p) => `<span class="chip">${p.nickname} · ${p.country}</span>`).join("")
+    ? people.map((p) => `<span class="chip">${p.nickname} · ${p.country || "대기"}${p.twitch ? " · Twitch" : ""}</span>`).join("")
     : '<span style="color:var(--muted)">아직 없음</span>';
   const winners = data.winners || [];
   document.getElementById("winners").innerHTML = winners.length
@@ -97,8 +99,8 @@ document.getElementById("btn-draw").onclick = async () => {
   const snap = await sdEventRef().get();
   const data = snap.data() || sdEmptyEvent();
   if (data.status !== "open") { alert("이벤트가 열린 상태에서만 추첨할 수 있습니다."); return; }
-  const people = sdParticipantList(data);
-  if (!people.length) { alert("참가자가 없습니다."); return; }
+  const people = sdJoinedList(data);
+  if (!people.length) { alert("국가까지 선택한 참가자가 없습니다."); return; }
   const count = parseInt(document.getElementById("draw-count").value, 10) || 1;
   const picked = sample(people, count);
   const winners = picked.map((p) => ({
@@ -106,7 +108,7 @@ document.getElementById("btn-draw").onclick = async () => {
     nickname: p.nickname,
     country: p.country,
     productName: "StreamDrop Gift Card",
-    giftLink: `${location.origin}/claim?id=${p.uid}`,
+    giftLink: `${sdPublicUrl()}/claim?id=${p.uid}`,
     orderId: `mock${p.uid.slice(-6)}`,
     status: "link_ready",
     whisperStatus: "skipped",
@@ -120,6 +122,11 @@ document.getElementById("btn-reset").onclick = async () => {
 };
 
 if (token === window.STREAMDROP_ADMIN_TOKEN) {
+  const twitchBadge = document.getElementById("twitch-badge");
+  if (window.STREAMDROP_TWITCH_CLIENT_ID) {
+    twitchBadge.textContent = "로그인 연결됨";
+    twitchBadge.className = "badge ok";
+  }
   sdEnsureEvent().then(() => sdListenEvent(render));
 }
 </script>

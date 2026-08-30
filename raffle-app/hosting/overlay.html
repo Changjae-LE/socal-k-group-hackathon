@@ -34,7 +34,7 @@
 <script src="/js/event.js"></script>
 <script>
 const countEl = document.getElementById("count");
-const joinUrl = `${location.origin}/join`;
+const joinUrl = `${sdPublicUrl()}/join`;
 new QRCode(document.getElementById("qr-box"), {
   text: joinUrl,
   width: 300,
@@ -84,7 +84,7 @@ sdEnsureEvent().then(() => {
       resetStage();
       return;
     }
-    const count = Object.keys(data.participants || {}).length;
+    const count = sdJoinedList(data).length || sdParticipantList(data).length;
     setCount(count);
     if (data.status === "open") {
       document.getElementById("winners-stage").classList.add("hidden");
