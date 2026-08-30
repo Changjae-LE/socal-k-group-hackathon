@@ -160,7 +160,7 @@ let pendingClaimWindow = null;
 function approvalButtonLabel() {
   const session = loadSession();
   return session && session.twitch
-    ? "Twitch DM으로 선물 받기"
+    ? "Twitch 귓속말로 선물 받기"
     : "선택한 선물 바로 열기";
 }
 
@@ -382,7 +382,7 @@ async function renderFromEvent(data) {
         status.textContent = "선택 후 버튼을 누르면 SodaGift 주문이 시작됩니다.";
       } else if (winner.status === "order_approved") {
         status.textContent = session.twitch
-          ? "선택을 확인했습니다. 주문 후 Twitch DM으로 보내드릴게요..."
+          ? "선택을 확인했습니다. 주문 후 Twitch 귓속말로 보내드릴게요..."
           : "선택을 확인했습니다. SodaGift 사이트를 준비하고 있어요...";
       } else if (winner.status === "ordering") {
         status.textContent = "SodaGift에서 선물 수령 링크를 발급하고 있어요...";
@@ -399,11 +399,11 @@ async function renderFromEvent(data) {
           button.classList.remove("hidden");
           if (session.twitch) {
             button.textContent = winner.whisperStatus === "failed"
-              ? "🎁 DM 전송 실패 · 링크 직접 열기"
+              ? "🎁 귓속말 전송 실패 · 링크 직접 열기"
               : "🎁 수령 링크 직접 열기 (백업)";
             status.textContent = winner.whisperStatus === "sent"
-              ? "Twitch 다이렉트 메시지로 수령 링크를 전송했습니다."
-              : "Twitch 메시지를 전송하지 못했습니다. 아래 버튼으로 열어 주세요.";
+              ? "Twitch 귓속말로 수령 링크를 전송했습니다."
+              : "Twitch 귓속말을 전송하지 못했습니다. 아래 버튼으로 열어 주세요.";
           } else if (pendingClaimWindow && !pendingClaimWindow.closed) {
             pendingClaimWindow.location.replace(link);
             pendingClaimWindow = null;
