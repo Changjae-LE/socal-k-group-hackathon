@@ -11,6 +11,9 @@ class Participant:
     nickname: str
     country: str = ""
     joined_at: float = field(default_factory=time.time)
+    # 낙첨자 AI 추천: none -> sent | failed
+    recs: list[dict] | None = None
+    recs_status: str = "none"
 
     def public(self) -> dict:
         return {"nickname": self.nickname, "country": self.country}

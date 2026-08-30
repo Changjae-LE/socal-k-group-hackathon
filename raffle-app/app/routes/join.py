@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from itsdangerous import BadSignature, URLSafeSerializer
 
 from app import config, state
-from app.services import twitch
+from app.services import recommend, twitch
 from app.web import templates
 from app.ws import hub
 
@@ -43,6 +43,7 @@ def _page_context(request: Request) -> dict:
     winner = None
     if sess and ev.status == "drawn":
         winner = next((w for w in ev.winners if w.twitch_user_id == sess["uid"]), None)
+    is_loser = ev.status == "drawn" and participant is not None and winner is None
     return {
         "request": request,
         "session": sess,
@@ -50,7 +51,9 @@ def _page_context(request: Request) -> dict:
         "joined": participant is not None,
         "participant": participant,
         "winner": winner,
-        "is_loser": ev.status == "drawn" and participant is not None and winner is None,
+        "is_loser": is_loser,
+        "recs": participant.recs if (is_loser and participant.recs) else None,
+        "store_url": config.SODAGIFT_STORE_URL,
         "countries": config.COUNTRIES,
         "twitch_ready": bool(config.TWITCH_CLIENT_ID),
         "debug": config.DEBUG,
@@ -88,6 +91,8 @@ async def join_callback(request: Request, code: str = "", state_param: str = "",
     except Exception:
         log.exception("twitch oauth failed")
         return RedirectResponse("/join?error=twitch")
+    # 취향 프로필 수집 (best-effort — 실패해도 참여는 진행)
+    recommend.set_profile(user["id"], await recommend.fetch_profile(token, user))
     resp = RedirectResponse("/join")
     _set_session(resp, {"uid": user["id"], "nick": user["nickname"]})
     return resp
@@ -99,8 +104,10 @@ async def join_dev(nick: str = ""):
     if not config.DEBUG:
         return RedirectResponse("/join")
     nick = nick or f"tester{secrets.token_hex(2)}"
+    uid = f"dev{secrets.token_hex(4)}"
+    recommend.set_profile(uid, recommend.mock_profile(nick))
     resp = RedirectResponse("/join")
-    _set_session(resp, {"uid": f"dev{secrets.token_hex(4)}", "nick": nick})
+    _set_session(resp, {"uid": uid, "nick": nick})
     return resp
 
 

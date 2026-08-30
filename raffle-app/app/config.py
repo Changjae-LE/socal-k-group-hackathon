@@ -15,6 +15,11 @@ TWITCH_BOT_TOKEN = os.getenv("TWITCH_BOT_TOKEN", "")
 SODAGIFT_API_KEY = os.getenv("SODAGIFT_API_KEY", "")
 SODAGIFT_BASE_URL = os.getenv("SODAGIFT_BASE_URL", "https://biz-sandbox-api.sodagift.com").rstrip("/")
 GIFT_SENDER_NAME = os.getenv("GIFT_SENDER_NAME", "StreamDrop")
+SODAGIFT_STORE_URL = os.getenv("SODAGIFT_STORE_URL", "https://sodagift.com")
+
+# AI 추천 (미설정 시 fallback 추천으로 동작)
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "streamdrop")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")

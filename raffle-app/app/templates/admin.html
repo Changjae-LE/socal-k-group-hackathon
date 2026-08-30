@@ -19,7 +19,7 @@
     <input id="draw-count" type="number" value="3" min="1">
     <button id="btn-draw">🎲 추첨</button>
     <button id="btn-reset" onclick="return confirm('정말 초기화할까요?') && doReset()">초기화</button>
-    <div class="status-line">상태: <span id="status" class="badge dim">-</span> · 참여 <b id="p-count">0</b>명</div>
+    <div class="status-line">상태: <span id="status" class="badge dim">-</span> · 참여 <b id="p-count">0</b>명 · 🤖 추천 <b id="recs-line">-</b></div>
   </div>
 
   <section>
@@ -66,6 +66,12 @@ function render(msg) {
   const [label, cls] = STATUS_LABEL[msg.status] || [msg.status, 'dim'];
   st.textContent = label; st.className = `badge ${cls}`;
   document.getElementById('p-count').textContent = msg.count;
+
+  if (msg.recs) {
+    const r = msg.recs;
+    document.getElementById('recs-line').textContent =
+      r.total ? `${r.sent}/${r.total}${r.failed ? ` (실패 ${r.failed})` : ''}` : '-';
+  }
 
   if (msg.participants) {
     const el = document.getElementById('participants');

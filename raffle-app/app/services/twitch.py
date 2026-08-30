@@ -21,7 +21,7 @@ def authorize_url(state: str) -> str:
         "client_id": config.TWITCH_CLIENT_ID,
         "redirect_uri": redirect_uri(),
         "response_type": "code",
-        "scope": "",  # 식별만 필요 — 스코프 불필요
+        "scope": "user:read:follows",  # 취향 프로필용 팔로우 목록 열람
         "state": state,
     }
     return f"{AUTH_BASE}/authorize?{urllib.parse.urlencode(params)}"
@@ -61,6 +61,43 @@ async def get_user(user_token: str) -> dict:
             "nickname": data.get("display_name") or data["login"],
             "login": data["login"],
         }
+
+
+async def get_followed(user_token: str, user_id: str) -> list[dict]:
+    """팔로우 채널 최대 100개: [{id, name}] (스코프 user:read:follows 필요)"""
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(
+            f"{HELIX}/channels/followed",
+            params={"user_id": user_id, "first": 100},
+            headers={
+                "Authorization": f"Bearer {user_token}",
+                "Client-Id": config.TWITCH_CLIENT_ID,
+            },
+        )
+        r.raise_for_status()
+        return [
+            {"id": d["broadcaster_id"], "name": d["broadcaster_name"]}
+            for d in r.json().get("data", [])
+        ]
+
+
+async def get_channel_categories(user_token: str, broadcaster_ids: list[str]) -> dict[str, str]:
+    """채널별 현재 방송 카테고리(game_name). 100개씩 배치 조회."""
+    out: dict[str, str] = {}
+    async with httpx.AsyncClient(timeout=10) as client:
+        for i in range(0, len(broadcaster_ids), 100):
+            r = await client.get(
+                f"{HELIX}/channels",
+                params=[("broadcaster_id", b) for b in broadcaster_ids[i:i + 100]],
+                headers={
+                    "Authorization": f"Bearer {user_token}",
+                    "Client-Id": config.TWITCH_CLIENT_ID,
+                },
+            )
+            r.raise_for_status()
+            for d in r.json().get("data", []):
+                out[d["broadcaster_id"]] = d.get("game_name") or ""
+    return out
 
 
 async def send_whisper(to_user_id: str, message: str) -> None:

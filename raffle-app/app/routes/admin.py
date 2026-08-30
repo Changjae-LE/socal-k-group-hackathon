@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.responses import PlainTextResponse
 
 from app import config, state
-from app.services import sodagift, twitch
+from app.services import recommend, sodagift, twitch
 from app.services.draw import draw_winners
 from app.web import templates
 from app.ws import hub
@@ -25,10 +25,17 @@ def _authorized(request: Request) -> bool:
 
 async def _push_admin_state() -> None:
     ev = state.current
+    winner_ids = {w.twitch_user_id for w in ev.winners}
+    losers = [p for p in ev.participants.values() if p.twitch_user_id not in winner_ids]
     await hub.broadcast("admin", {
         **ev.summary(),
         "participants": [p.public() for p in ev.participants.values()],
         "winners": [w.admin_view() for w in ev.winners],
+        "recs": {
+            "sent": sum(1 for p in losers if p.recs_status == "sent"),
+            "failed": sum(1 for p in losers if p.recs_status == "failed"),
+            "total": len(losers) if ev.status == "drawn" else 0,
+        },
     })
 
 
@@ -63,6 +70,7 @@ async def admin_reset(request: Request):
     async with state.lock:
         state.reset()
         sodagift.clear_cache()
+        recommend.clear()
         summary = state.current.summary()
     await hub.broadcast("overlay", {**summary, "reset": True})
     await hub.broadcast_participants({"type": "reset"})
@@ -95,9 +103,14 @@ async def admin_draw(request: Request, payload: dict = Body(default={})):
         await hub.send_participant(uid, {"type": "result", "won": uid in winner_ids})
     await _push_admin_state()
 
-    # 2) 백그라운드 지급
-    asyncio.create_task(_fulfill_winners())
+    # 2) 백그라운드: 당첨자 지급 → 낙첨자 AI 추천
+    asyncio.create_task(_post_draw())
     return {"ok": True, "winners": len(winner_ids)}
+
+
+async def _post_draw() -> None:
+    await _fulfill_winners()
+    await _send_loser_recs()
 
 
 async def _fulfill_winners() -> None:
@@ -141,6 +154,29 @@ async def _fulfill_winners() -> None:
                 log.warning("whisper failed for %s: %s", w.nickname, e)
                 w.whisper_status = "failed"
             await asyncio.sleep(WHISPER_INTERVAL)
+        await _push_admin_state()
+
+
+async def _send_loser_recs() -> None:
+    """낙첨자 리타겟팅: 취향 맞춤 상품 top-3를 각자 폰으로 push."""
+    ev = state.current
+    winner_ids = {w.twitch_user_id for w in ev.winners}
+    for uid, p in list(ev.participants.items()):
+        if uid in winner_ids or ev is not state.current:  # 리셋되면 중단
+            continue
+        try:
+            items = await recommend.recommend(uid, p.country)
+            p.recs = items
+            p.recs_status = "sent" if items else "failed"
+            if items:
+                await hub.send_participant(uid, {
+                    "type": "recs",
+                    "items": items,
+                    "store_url": config.SODAGIFT_STORE_URL,
+                })
+        except Exception as e:
+            log.warning("recs failed for %s: %s", p.nickname, e)
+            p.recs_status = "failed"
         await _push_admin_state()
 
 
