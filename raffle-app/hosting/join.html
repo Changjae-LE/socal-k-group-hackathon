@@ -78,8 +78,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js?v=9"></script>
-<script src="/js/event.js?v=9"></script>
+<script src="/js/firebase-config.js?v=10"></script>
+<script src="/js/event.js?v=10"></script>
 <script>
 const SESSION_KEY = "sd_session";
 const COUNTRIES = { KR:"🇰🇷 South Korea", US:"🇺🇸 United States", JP:"🇯🇵 Japan", CA:"🇨🇦 Canada", AU:"🇦🇺 Australia", GB:"🇬🇧 United Kingdom", FR:"🇫🇷 France", SG:"🇸🇬 Singapore", HK:"🇭🇰 Hong Kong", TW:"🇹🇼 Taiwan", PH:"🇵🇭 Philippines", TH:"🇹🇭 Thailand", VN:"🇻🇳 Vietnam", MY:"🇲🇾 Malaysia", ID:"🇮🇩 Indonesia", IN:"🇮🇳 India", CN:"🇨🇳 China" };
@@ -148,8 +148,20 @@ async function decryptGiftLink(session, encrypted) {
     bytesFromBase64Url(encrypted.ciphertext),
   );
   const link = new TextDecoder().decode(clear);
-  if (!/^https:\/\//i.test(link)) throw new Error("수령 링크 형식이 올바르지 않습니다.");
-  return link;
+  let parsed;
+  try {
+    parsed = new URL(link);
+  } catch {
+    throw new Error("수령 링크 형식이 올바르지 않습니다.");
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (
+    parsed.protocol !== "https:" ||
+    !(host === "sodagift.com" || host.endsWith(".sodagift.com"))
+  ) {
+    throw new Error("SodaGift에서 발급한 수령 링크가 아닙니다.");
+  }
+  return parsed.href;
 }
 
 let selectedGiftId = null;
@@ -405,12 +417,11 @@ async function renderFromEvent(data) {
           const link = await decryptGiftLink(session, winner.encryptedGift);
           button.href = link;
           button.classList.remove("hidden");
-          button.textContent = winner.whisperStatus === "failed"
-            ? "🎁 귓속말 전송 실패 · 링크 직접 열기"
-            : "🎁 수령 링크 직접 열기 (백업)";
+          button.textContent = "🎁 SodaGift에서 선물 받기";
+          button.setAttribute("aria-label", "SodaGift 수령 사이트 열기");
           status.textContent = winner.whisperStatus === "sent"
-            ? "Twitch 귓속말로 수령 링크를 전송했습니다."
-            : "Twitch 귓속말을 전송하지 못했습니다. 아래 버튼으로 열어 주세요.";
+            ? "아래 버튼은 Twitch 귓속말로 전송된 것과 동일한 SodaGift 수령 링크입니다."
+            : "Twitch 귓속말을 전송하지 못했습니다. 아래 버튼으로 SodaGift에서 직접 받아 주세요.";
           showError("");
         } catch (err) {
           console.error(err);

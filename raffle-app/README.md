@@ -90,4 +90,4 @@ python scripts/fulfill_firestore_winners.py --once --retry-failed
 2. 관객이 QR 스캔 → Twitch 로그인 → 국가 선택 → 참여 (오버레이 카운트 상승)
 3. "추첨" 클릭 → 오버레이 당첨자 발표 + 지급 브리지가 SodaGift 상품 선택지 게시
 4. 당첨자가 상품 선택 → “선택한 선물 받기” 클릭 → 이때 SodaGift 주문 생성
-5. 로그인한 Twitch 계정의 귓속말로 SodaGift 수령 링크 수신
+5. 로그인한 Twitch 계정의 귓속말 또는 “SodaGift에서 선물 받기” 버튼으로 API가 발급한 URL 열기
