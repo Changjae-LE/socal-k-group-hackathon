@@ -78,8 +78,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js?v=10"></script>
-<script src="/js/event.js?v=10"></script>
+<script src="/js/firebase-config.js?v=11"></script>
+<script src="/js/event.js?v=11"></script>
 <script>
 const SESSION_KEY = "sd_session";
 const COUNTRIES = { KR:"🇰🇷 South Korea", US:"🇺🇸 United States", JP:"🇯🇵 Japan", CA:"🇨🇦 Canada", AU:"🇦🇺 Australia", GB:"🇬🇧 United Kingdom", FR:"🇫🇷 France", SG:"🇸🇬 Singapore", HK:"🇭🇰 Hong Kong", TW:"🇹🇼 Taiwan", PH:"🇵🇭 Philippines", TH:"🇹🇭 Thailand", VN:"🇻🇳 Vietnam", MY:"🇲🇾 Malaysia", ID:"🇮🇩 Indonesia", IN:"🇮🇳 India", CN:"🇨🇳 China" };
@@ -270,7 +270,6 @@ async function registerOnPublicEvent(session) {
 }
 
 const TWITCH_STATE_KEY = "sd_twitch_oauth_state";
-const TWITCH_NONCE_KEY = "sd_twitch_oauth_nonce";
 
 function randomOAuthValue() {
   const bytes = new Uint8Array(24);
@@ -280,21 +279,17 @@ function randomOAuthValue() {
 
 if (window.STREAMDROP_TWITCH_CLIENT_ID) {
   const btn = document.getElementById("btn-twitch");
-  let oauthState = sessionStorage.getItem(TWITCH_STATE_KEY);
-  let oauthNonce = sessionStorage.getItem(TWITCH_NONCE_KEY);
-  if (!oauthState || !oauthNonce) {
+  let oauthState = localStorage.getItem(TWITCH_STATE_KEY);
+  if (!oauthState) {
     oauthState = randomOAuthValue();
-    oauthNonce = randomOAuthValue();
-    sessionStorage.setItem(TWITCH_STATE_KEY, oauthState);
-    sessionStorage.setItem(TWITCH_NONCE_KEY, oauthNonce);
+    localStorage.setItem(TWITCH_STATE_KEY, oauthState);
   }
   const twitchAuth = "https://id.twitch.tv/oauth2/authorize?" + new URLSearchParams({
     client_id: window.STREAMDROP_TWITCH_CLIENT_ID,
     redirect_uri: window.STREAMDROP_TWITCH_REDIRECT_URI,
-    response_type: "token id_token",
-    scope: "openid",
+    response_type: "token",
+    scope: "user:read:email",
     state: oauthState,
-    nonce: oauthNonce,
     force_verify: "true",
   });
   btn.href = twitchAuth;
@@ -312,12 +307,10 @@ async function consumeTwitchHash() {
   const token = hash.get("access_token");
   if (!token || !window.STREAMDROP_TWITCH_CLIENT_ID) return false;
 
-  const expectedState = sessionStorage.getItem(TWITCH_STATE_KEY);
+  const expectedState = localStorage.getItem(TWITCH_STATE_KEY);
   if (!expectedState || hash.get("state") !== expectedState) {
     throw new Error("Twitch 로그인 확인값이 일치하지 않습니다. 다시 로그인해 주세요.");
   }
-  sessionStorage.removeItem(TWITCH_STATE_KEY);
-  sessionStorage.removeItem(TWITCH_NONCE_KEY);
   history.replaceState(null, "", location.pathname);
   const res = await fetch("https://api.twitch.tv/helix/users", {
     headers: {
@@ -326,7 +319,9 @@ async function consumeTwitchHash() {
     },
   });
   if (!res.ok) throw new Error("Twitch 사용자 정보를 가져오지 못했습니다.");
-  const user = (await res.json()).data[0];
+  const user = (await res.json()).data?.[0];
+  if (!user?.id) throw new Error("Twitch 계정 정보를 확인하지 못했습니다.");
+  localStorage.removeItem(TWITCH_STATE_KEY);
   const session = {
     uid: user.id,
     nick: user.display_name || user.login,
@@ -335,7 +330,8 @@ async function consumeTwitchHash() {
     twitch: true,
   };
   saveSession(session);
-  await registerOnPublicEvent(session);
+  const written = await registerOnPublicEvent(session);
+  await renderFromEvent(written);
   return true;
 }
 

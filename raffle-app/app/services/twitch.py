@@ -27,10 +27,9 @@ def authorize_url(state: str) -> str:
     params = {
         "client_id": config.TWITCH_CLIENT_ID,
         "redirect_uri": redirect_uri(),
-        "response_type": "token id_token",
-        "scope": "openid",
+        "response_type": "token",
+        "scope": "user:read:email",
         "state": state,
-        "nonce": state,
         "force_verify": "true",
     }
     return f"{AUTH_BASE}/authorize?{urllib.parse.urlencode(params)}"
