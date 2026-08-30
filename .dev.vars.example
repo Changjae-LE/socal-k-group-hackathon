@@ -1,0 +1,2 @@
+# Copy to .dev.vars for local wrangler dev. Do not commit .dev.vars.
+SODAGIFT_API_KEY=

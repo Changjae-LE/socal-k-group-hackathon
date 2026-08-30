@@ -12,3 +12,5 @@ firebase-debug.log
 streamdrop-app/out/
 functions/node_modules/
 functions/secrets.js
+.wrangler/
+.dev.vars
