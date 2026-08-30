@@ -15,7 +15,7 @@ QR 스캔 → Twitch 로그인 참여 → 추첨 → 당첨자 폰 + Twitch 귓�
 # Python 3.10+ 필요 (macOS 기본 3.8 불가 — brew python3.12 권장)
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # 실제 키는 .env에만 입력하고 Git에 커밋하지 않기
+cp .env.example .env   # 값 채우기
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
@@ -49,12 +49,9 @@ cloudflared tunnel --url http://localhost:8000
 1. sandbox 계정 → Settings > Developer Settings에서 API 키 발급 (`sodagift_test_...`)
 2. `.env`의 `SODAGIFT_API_KEY`에 설정 → mock에서 실연동으로 자동 전환
 - base URL: `https://biz-sandbox-api.sodagift.com`, 헤더 `SODA-API-KEY`
-- 흐름: `GET /v1/products?country_code=XX&delivery_method=LINK&page=0&size=100` → 최저가 ON_SALE 상품 → 실시간 availability 확인 → `POST /v1/orders`(LINK, 멱등키) → `GET /v1/orders/{id}` 폴링 → `order_items[].delivery.link`
-- `SODAGIFT_CHECK_AVAILABILITY=1`: 공급사 실시간 판매 가능 여부 확인
-- `SODAGIFT_LINK_POLL_INTERVAL`, `SODAGIFT_LINK_POLL_TIMEOUT`: LINK 폴링 간격·제한 시간
-- `orders.log`에는 주문 ID·상품명·상태만 기록하며 수령 링크와 참가자 식별정보는 저장하지 않음
+- 흐름: `GET /v1/products?country_code=XX&delivery_method=LINK` → 최저가 ON_SALE 상품 → `POST /v1/orders`(LINK, 멱등키) → `GET /v1/orders/{id}` 폴링 → `order_items[].delivery.link`
+- 발급된 링크는 `orders.log`에도 기록됨 (지급 사고 대비)
 - ⚠️ 수령 링크 보유자 = 수령자. overlay/admin에 절대 노출하지 않음 (참가자 본인 WS·귓속말로만 전달)
-- 주문 생성은 샌드박스 잔액을 사용하며 기프트 카드 주문은 생성 후 취소할 수 없으므로, 재시도 시 동일한 `external_reference_id`를 유지해야 함
 
 ## 데모 시나리오
 1. `/admin` → "이벤트 시작" → 오버레이에 QR 표시

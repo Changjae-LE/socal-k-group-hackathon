@@ -14,9 +14,6 @@ TWITCH_BOT_TOKEN = os.getenv("TWITCH_BOT_TOKEN", "")
 
 SODAGIFT_API_KEY = os.getenv("SODAGIFT_API_KEY", "")
 SODAGIFT_BASE_URL = os.getenv("SODAGIFT_BASE_URL", "https://biz-sandbox-api.sodagift.com").rstrip("/")
-SODAGIFT_CHECK_AVAILABILITY = os.getenv("SODAGIFT_CHECK_AVAILABILITY", "1") == "1"
-SODAGIFT_LINK_POLL_INTERVAL = max(1.0, float(os.getenv("SODAGIFT_LINK_POLL_INTERVAL", "1.5")))
-SODAGIFT_LINK_POLL_TIMEOUT = max(10.0, float(os.getenv("SODAGIFT_LINK_POLL_TIMEOUT", "60")))
 GIFT_SENDER_NAME = os.getenv("GIFT_SENDER_NAME", "StreamDrop")
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "streamdrop")

@@ -1,10 +1,9 @@
-"""SodaGift Biz API LINK delivery.
+"""SodaGift Biz API 연동 (LINK 배송).
 
-Flow: catalog lookup -> optional realtime availability check -> idempotent order
-creation -> order polling -> secret delivery URL.
+플로우: 국가별 상품 선택 -> POST /v1/orders (LINK) -> GET /v1/orders/{id} 폴링
+       -> order_items[].delivery.link (수령 URL, 비밀로 취급)
 
-The delivery URL is returned to the caller only. It must never be logged or
-broadcast to public/admin channels.
+SODAGIFT_API_KEY 미설정 시 mock 모드: 가짜 링크를 즉시 반환한다.
 """
 import asyncio
 import json
@@ -18,275 +17,127 @@ from app import config
 
 log = logging.getLogger("streamdrop.sodagift")
 
+HEADERS = {"SODA-API-KEY": config.SODAGIFT_API_KEY}
+LINK_POLL_INTERVAL = 1.5
+LINK_POLL_TIMEOUT = 30.0
+
+# 국가별 상품 선택 캐시 (이벤트 동안 반복 조회 방지)
 _product_cache: dict[str, dict] = {}
-_ALLOWED_LOG_FIELDS = {
-    "mode",
-    "country",
-    "external_reference_id",
-    "order_id",
-    "product_name",
-    "status",
-}
 
 
 class SodaGiftError(Exception):
-    """Safe, user-displayable SodaGift integration error."""
+    pass
 
 
 def mock_mode() -> bool:
-    return not config.SODAGIFT_API_KEY.strip()
-
-
-def _headers() -> dict[str, str]:
-    return {
-        "SODA-API-KEY": config.SODAGIFT_API_KEY,
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-    }
-
-
-def _error_description(response: httpx.Response) -> str:
-    if response.status_code == 401:
-        return "unauthorized: check SODAGIFT_API_KEY"
-    try:
-        body = response.json()
-    except ValueError:
-        return f"HTTP {response.status_code}"
-    code = body.get("errorCode") or body.get("code") or f"HTTP {response.status_code}"
-    message = body.get("message")
-    return f"{code}: {message}" if message else str(code)
+    return not config.SODAGIFT_API_KEY
 
 
 def _log_order(record: dict) -> None:
-    """Persist operational metadata without recipient identity or claim URL."""
-    safe = {
-        key: value
-        for key, value in record.items()
-        if key in _ALLOWED_LOG_FIELDS and value is not None
-    }
-    safe["ts"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-    with open("orders.log", "a", encoding="utf-8") as stream:
-        stream.write(json.dumps(safe, ensure_ascii=False) + "\n")
-
-
-def _product_order_amount(product: dict) -> float | None:
-    amount = product.get("amount")
-    if amount is not None:
-        return float(amount)
-    minimum = product.get("min_amount")
-    return float(minimum) if minimum is not None else None
-
-
-async def _get_with_rate_limit_retry(
-    client: httpx.AsyncClient,
-    path: str,
-    *,
-    params: dict | None = None,
-) -> httpx.Response:
-    for attempt in range(2):
-        response = await client.get(path, params=params)
-        if response.status_code != 429:
-            return response
-        await asyncio.sleep(1.0 + attempt)
-    return response
+    """지급 사고 대비: 발급된 주문/링크를 파일에 영속 기록."""
+    record["ts"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with open("orders.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 async def select_product(country: str) -> dict:
-    """Select the lowest-value LINK product available for the country."""
+    """국가에서 LINK 배송 가능한 ON_SALE 상품 중 가장 저렴한 것을 선택.
+
+    (해커톤: sandbox 잔액 절약을 위해 최저가. 고정가 상품 우선,
+    custom amount 상품은 min_amount로 주문.)
+    """
     if country in _product_cache:
         return _product_cache[country]
 
-    async with httpx.AsyncClient(
-        base_url=config.SODAGIFT_BASE_URL,
-        headers=_headers(),
-        timeout=15,
-    ) as client:
-        response = await _get_with_rate_limit_retry(
-            client,
+    async with httpx.AsyncClient(base_url=config.SODAGIFT_BASE_URL, headers=HEADERS, timeout=15) as client:
+        r = await client.get(
             "/v1/products",
-            params={
-                "country_code": country,
-                "delivery_method": "LINK",
-                "page": 0,
-                "size": 100,
-            },
+            params={"country_code": country, "delivery_method": "LINK", "size": 100},
         )
-        if response.status_code != 200:
-            raise SodaGiftError(
-                f"product catalog failed: {_error_description(response)}"
-            )
+        if r.status_code != 200:
+            raise SodaGiftError(f"products query failed {r.status_code}: {r.text[:200]}")
+        products = r.json().get("products", [])
 
-        products = response.json().get("products") or []
-        candidates: list[tuple[float, dict]] = []
-        for product in products:
-            if product.get("availability") != "ON_SALE":
-                continue
-            if "LINK" not in (product.get("available_delivery_method") or []):
-                continue
-            amount = _product_order_amount(product)
-            if amount is None:
-                continue
-            candidates.append((amount, product))
+    candidates = []
+    for p in products:
+        if p.get("availability") != "ON_SALE":
+            continue
+        price = p.get("amount") or p.get("min_amount")
+        if price is None:
+            continue
+        candidates.append((float(price), p))
+    if not candidates:
+        raise SodaGiftError(f"no LINK-deliverable product for country {country}")
 
-        if not candidates:
-            raise SodaGiftError(
-                f"no LINK-deliverable ON_SALE product for country {country}"
-            )
-        candidates.sort(key=lambda candidate: candidate[0])
-
-        selected = candidates[0][1]
-        if config.SODAGIFT_CHECK_AVAILABILITY:
-            unknown_fallback: dict | None = None
-            selected = None
-            # Avoid turning one draw into a large burst of supplier checks.
-            for _, product in candidates[:5]:
-                availability = await _get_with_rate_limit_retry(
-                    client,
-                    f"/v1/products/{product['id']}/availability",
-                )
-                if availability.status_code != 200:
-                    unknown_fallback = unknown_fallback or product
-                    continue
-                status = availability.json().get("status", "UNKNOWN")
-                if status == "ON_SALE":
-                    selected = product
-                    break
-                if status == "UNKNOWN":
-                    unknown_fallback = unknown_fallback or product
-
-            # UNKNOWN means the supplier check failed, not necessarily sold out.
-            # Preserve demo continuity while clearly recording the fallback.
-            if selected is None and unknown_fallback is not None:
-                selected = unknown_fallback
-                log.warning(
-                    "using catalog availability fallback for country %s product %s",
-                    country,
-                    selected["id"],
-                )
-            if selected is None:
-                raise SodaGiftError(
-                    f"no realtime-available LINK product for country {country}"
-                )
-
-    _product_cache[country] = selected
-    log.info(
-        "selected SodaGift product for %s: id=%s name=%s",
-        country,
-        selected["id"],
-        selected.get("name"),
-    )
-    return selected
+    candidates.sort(key=lambda t: t[0])
+    _, product = candidates[0]
+    _product_cache[country] = product
+    log.info("selected product for %s: [%s] %s", country, product["id"], product.get("name"))
+    return product
 
 
 async def _create_order(product: dict, recipient_name: str, ref_id: str) -> int:
-    item = {"id": product["id"]}
-    if product.get("amount") is None and product.get("min_amount") is not None:
-        item["custom_amount"] = product["min_amount"]
-
     body = {
-        "item": item,
+        "item": {"id": product["id"]},
         "delivery": {
             "method": "LINK",
             "recipient": {"name": recipient_name},
             "sender": {"name": config.GIFT_SENDER_NAME},
         },
         "message": "Congratulations! You won the StreamDrop giveaway 🎉",
+        # 영숫자만 허용 (멱등키)
         "external_reference_id": ref_id,
     }
+    # custom amount 상품이면 최소 금액으로 주문
+    if product.get("amount") is None and product.get("min_amount") is not None:
+        body["item"]["custom_amount"] = product["min_amount"]
 
-    async with httpx.AsyncClient(
-        base_url=config.SODAGIFT_BASE_URL,
-        headers=_headers(),
-        timeout=20,
-    ) as client:
+    async with httpx.AsyncClient(base_url=config.SODAGIFT_BASE_URL, headers=HEADERS, timeout=20) as client:
         for attempt in range(3):
-            response = await client.post("/v1/orders", json=body)
-            if response.status_code == 200:
-                order_id = response.json().get("id")
-                if order_id is None:
-                    raise SodaGiftError("order response did not include an id")
-                return int(order_id)
-
-            error = _error_description(response)
-            retryable = response.status_code == 429 or (
-                response.status_code == 500
-                and error.startswith("order_retry_needed")
-            )
-            if not retryable:
-                raise SodaGiftError(f"create order failed: {error}")
-            await asyncio.sleep(1.0 + attempt)
-
-    raise SodaGiftError("create order failed after 3 attempts")
+            r = await client.post("/v1/orders", json=body)
+            if r.status_code == 200:
+                return r.json()["id"]
+            # order_retry_needed(500) 은 재시도 안전 (멱등키 있음)
+            retriable = r.status_code == 500 and "order_retry_needed" in r.text
+            if r.status_code == 429 or retriable:
+                await asyncio.sleep(1.2 * (attempt + 1))
+                continue
+            raise SodaGiftError(f"create order failed {r.status_code}: {r.text[:300]}")
+    raise SodaGiftError("create order: retries exhausted")
 
 
 async def _fetch_link(order_id: int) -> str:
-    """Poll the order until SodaGift exposes order_items[].delivery.link."""
-    deadline = time.monotonic() + config.SODAGIFT_LINK_POLL_TIMEOUT
-    last_state = "not returned"
-
-    async with httpx.AsyncClient(
-        base_url=config.SODAGIFT_BASE_URL,
-        headers=_headers(),
-        timeout=15,
-    ) as client:
+    """주문 상세를 폴링해서 delivery.link 획득."""
+    deadline = time.monotonic() + LINK_POLL_TIMEOUT
+    async with httpx.AsyncClient(base_url=config.SODAGIFT_BASE_URL, headers=HEADERS, timeout=15) as client:
         while time.monotonic() < deadline:
-            response = await _get_with_rate_limit_retry(
-                client,
-                f"/v1/orders/{order_id}",
-            )
-            if response.status_code != 200:
-                raise SodaGiftError(
-                    f"order lookup failed: {_error_description(response)}"
-                )
-
-            data = response.json()
-            order_status = data.get("status", "UNKNOWN")
-            items = data.get("order_items") or []
-            if not items and data.get("order_item"):
-                items = [data["order_item"]]
-
-            item_states = []
-            for item in items:
-                item_status = item.get("status", "UNKNOWN")
-                item_states.append(item_status)
-                link = (item.get("delivery") or {}).get("link")
-                if link:
-                    return link
-                if item_status == "CANCELLED":
-                    raise SodaGiftError(f"order item cancelled (order {order_id})")
-
-            if order_status in {"PAYMENT_EXPIRED", "CANCELLED"}:
-                raise SodaGiftError(
-                    f"order {order_id} ended with status {order_status}"
-                )
-            last_state = f"order={order_status}, items={item_states or ['missing']}"
-            await asyncio.sleep(config.SODAGIFT_LINK_POLL_INTERVAL)
-
-    raise SodaGiftError(
-        f"claim link not ready after {config.SODAGIFT_LINK_POLL_TIMEOUT:.0f}s "
-        f"(order {order_id}, {last_state})"
-    )
+            r = await client.get(f"/v1/orders/{order_id}")
+            if r.status_code == 200:
+                data = r.json()
+                items = data.get("order_items") or []
+                # 단일 주문 응답이 order_item(단수)로 올 수도 있어 방어적으로 처리
+                if not items and data.get("order_item"):
+                    items = [data["order_item"]]
+                for item in items:
+                    link = (item.get("delivery") or {}).get("link")
+                    if link:
+                        return link
+                    if item.get("status") == "CANCELLED":
+                        raise SodaGiftError(f"order item cancelled (order {order_id})")
+            await asyncio.sleep(LINK_POLL_INTERVAL)
+    raise SodaGiftError(f"link not ready after {LINK_POLL_TIMEOUT}s (order {order_id})")
 
 
 async def get_gift_link(nickname: str, country: str, ref_id: str) -> dict:
-    """Create one idempotent reward and return its secret claim URL in memory."""
+    """당첨자 1명분 처리. 반환: {order_id, product_name, link}"""
     if mock_mode():
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(1.0)  # 데모 연출용 짧은 지연
         result = {
             "order_id": f"mock-{uuid.uuid4().hex[:8]}",
             "product_name": f"Mock Gift Card ({country})",
             "link": f"{config.BASE_URL}/claim/{uuid.uuid4().hex}",
         }
-        _log_order(
-            {
-                "mode": "mock",
-                "country": country,
-                "external_reference_id": ref_id,
-                "order_id": result["order_id"],
-                "product_name": result["product_name"],
-                "status": "link_ready",
-            }
-        )
+        _log_order({"mode": "mock", "nickname": nickname, "country": country, **result})
         return result
 
     product = await select_product(country)
@@ -297,18 +148,8 @@ async def get_gift_link(nickname: str, country: str, ref_id: str) -> dict:
         "product_name": product.get("name") or "Gift",
         "link": link,
     }
-    _log_order(
-        {
-            "mode": "sandbox"
-            if "sandbox" in config.SODAGIFT_BASE_URL
-            else "production",
-            "country": country,
-            "external_reference_id": ref_id,
-            "order_id": order_id,
-            "product_name": result["product_name"],
-            "status": "link_ready",
-        }
-    )
+    _log_order({"mode": "live", "nickname": nickname, "country": country,
+                "order_id": order_id, "product": product.get("name"), "link": link})
     return result
 
 
