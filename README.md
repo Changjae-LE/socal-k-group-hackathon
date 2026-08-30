@@ -150,6 +150,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | `TWITCH_BOT_TOKEN` | `user:manage:whispers` 토큰 | 선택 사항 |
 | `SODAGIFT_API_KEY` | SodaGift Sandbox API 키 | 없으면 Mock Mode |
 | `SODAGIFT_BASE_URL` | SodaGift API 주소 | Sandbox 주소 사용 |
+| `SODAGIFT_CHECK_AVAILABILITY` | 공급사 실시간 판매 가능 여부 확인 | 기본값 `1` |
+| `SODAGIFT_LINK_POLL_INTERVAL` | 주문 LINK 조회 간격(초) | 기본값 `1.5` |
+| `SODAGIFT_LINK_POLL_TIMEOUT` | LINK 조회 제한 시간(초) | 기본값 `60` |
 
 ## 7. OBS 및 휴대폰 연결
 
