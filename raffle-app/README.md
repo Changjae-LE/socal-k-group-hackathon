@@ -1,7 +1,7 @@
 # 🎁 StreamDrop
 
 라이브 방송(Twitch) 시청자 대상 실시간 글로벌 기프트 추첨 MVP.
-QR 스캔 → Twitch 로그인 참여 → 추첨 → 당첨자가 SodaGift 상품 선택·주문 승인 → 수령 링크 지급.
+QR 스캔 → 참여 → 추첨 → SodaGift 상품 선택·주문 승인 → Twitch DM 또는 사이트 자동 열기.
 
 ## 공개 Hosting (Firebase, 무료)
 
@@ -95,4 +95,4 @@ python scripts/fulfill_firestore_winners.py --once --retry-failed
 2. 관객이 QR 스캔 → Twitch 로그인 → 국가 선택 → 참여 (오버레이 카운트 상승)
 3. "추첨" 클릭 → 오버레이 당첨자 발표 + 지급 브리지가 SodaGift 상품 선택지 게시
 4. 당첨자가 상품 선택 → “선택한 선물 받기” 클릭 → 이때 SodaGift 주문 생성
-5. 당첨자 폰이 암호화된 링크를 복호화 → 실제 “SodaGift에서 수령하기” 버튼 표시
+5. Twitch 참여자는 DM으로 링크 수신, 닉네임 참여자는 SodaGift 사이트가 자동으로 열림

@@ -118,8 +118,61 @@ class FulfillmentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(winner["status"], "link_ready")
         self.assertEqual(winner["giftLink"], "")
         self.assertEqual(winner["productName"], "Test Gift")
+        self.assertEqual(winner["whisperStatus"], "skipped")
         self.assertNotIn(real_link, str(winner))
         self.assertEqual(decrypt_claim(private_key, winner["encryptedGift"]), real_link)
+
+    async def test_twitch_winner_receives_claim_link_by_whisper(self) -> None:
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        store = FakeStore({
+            "status": "drawn",
+            "eventId": "event-twitch",
+            "participants": {
+                "777": {
+                    "nickname": "twitch-winner",
+                    "country": "CA",
+                    "twitch": True,
+                    "claimPublicKey": public_jwk(private_key),
+                }
+            },
+            "winners": [{
+                "uid": "777",
+                "nickname": "twitch-winner",
+                "country": "CA",
+                "status": "order_approved",
+                "selectedProductId": 60048,
+            }],
+        })
+        real_link = "https://sandbox.example/claim/twitch-secret"
+        sent = []
+
+        async def gift_provider(
+            _name: str,
+            _country: str,
+            _ref_id: str,
+            product_id: int,
+        ) -> dict[str, str]:
+            self.assertEqual(product_id, 60048)
+            return {
+                "order_id": "888",
+                "product_name": "Twitch Gift",
+                "link": real_link,
+            }
+
+        async def whisper_provider(user_id: str, message: str) -> None:
+            sent.append((user_id, message))
+
+        await fulfill_once(
+            store,
+            gift_provider=gift_provider,
+            whisper_provider=whisper_provider,
+        )
+
+        winner = store.data["winners"][0]
+        self.assertEqual(winner["whisperStatus"], "sent")
+        self.assertEqual(sent[0][0], "777")
+        self.assertIn(real_link, sent[0][1])
+        self.assertNotIn(real_link, str(winner))
 
     async def test_pending_winner_gets_options_without_creating_order(self) -> None:
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)

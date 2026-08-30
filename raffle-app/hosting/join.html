@@ -80,8 +80,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
-<script src="/js/firebase-config.js?v=6"></script>
-<script src="/js/event.js?v=6"></script>
+<script src="/js/firebase-config.js?v=7"></script>
+<script src="/js/event.js?v=7"></script>
 <script>
 const SESSION_KEY = "sd_session";
 const COUNTRIES = { KR:"🇰🇷 South Korea", US:"🇺🇸 United States", JP:"🇯🇵 Japan", CA:"🇨🇦 Canada", AU:"🇦🇺 Australia", GB:"🇬🇧 United Kingdom", FR:"🇫🇷 France", SG:"🇸🇬 Singapore", HK:"🇭🇰 Hong Kong", TW:"🇹🇼 Taiwan", PH:"🇵🇭 Philippines", TH:"🇹🇭 Thailand", VN:"🇻🇳 Vietnam", MY:"🇲🇾 Malaysia", ID:"🇮🇩 Indonesia", IN:"🇮🇳 India", CN:"🇨🇳 China" };
@@ -155,6 +155,14 @@ async function decryptGiftLink(session, encrypted) {
 }
 
 let selectedGiftId = null;
+let pendingClaimWindow = null;
+
+function approvalButtonLabel() {
+  const session = loadSession();
+  return session && session.twitch
+    ? "Twitch DM으로 선물 받기"
+    : "선택한 선물 바로 열기";
+}
 
 function renderGiftOptions(options) {
   const container = document.getElementById("gift-options");
@@ -191,6 +199,7 @@ function renderGiftOptions(options) {
     container.appendChild(card);
   }
   approve.disabled = selectedGiftId === null;
+  approve.textContent = approvalButtonLabel();
 }
 
 async function approveSelectedGift() {
@@ -224,6 +233,14 @@ async function approveSelectedGift() {
 
 document.getElementById("gift-approve").onclick = async () => {
   const approve = document.getElementById("gift-approve");
+  const session = loadSession();
+  if (session && !session.twitch) {
+    pendingClaimWindow = window.open("", "_blank");
+    if (pendingClaimWindow) {
+      pendingClaimWindow.document.title = "StreamDrop 선물 준비 중";
+      pendingClaimWindow.document.body.textContent = "SodaGift 수령 링크를 준비하고 있어요...";
+    }
+  }
   approve.disabled = true;
   approve.textContent = "주문 요청 중...";
   try {
@@ -231,8 +248,10 @@ document.getElementById("gift-approve").onclick = async () => {
     showError("");
   } catch (err) {
     console.error(err);
+    if (pendingClaimWindow && !pendingClaimWindow.closed) pendingClaimWindow.close();
+    pendingClaimWindow = null;
     approve.disabled = false;
-    approve.textContent = "선택한 선물 받기";
+    approve.textContent = approvalButtonLabel();
     showError(err.message || "선물 선택을 저장하지 못했습니다.");
   }
 };
@@ -354,7 +373,7 @@ async function renderFromEvent(data) {
       button.classList.add("hidden");
       button.removeAttribute("href");
       status.classList.remove("hidden");
-      approve.textContent = "선택한 선물 받기";
+      approve.textContent = approvalButtonLabel();
 
       if (winner.status === "choice_required" && (winner.giftOptions || []).length) {
         product.textContent = "원하는 선물을 선택하세요";
@@ -362,7 +381,9 @@ async function renderFromEvent(data) {
         renderGiftOptions(winner.giftOptions);
         status.textContent = "선택 후 버튼을 누르면 SodaGift 주문이 시작됩니다.";
       } else if (winner.status === "order_approved") {
-        status.textContent = "선택을 확인했습니다. SodaGift 주문을 시작합니다...";
+        status.textContent = session.twitch
+          ? "선택을 확인했습니다. 주문 후 Twitch DM으로 보내드릴게요..."
+          : "선택을 확인했습니다. SodaGift 사이트를 준비하고 있어요...";
       } else if (winner.status === "ordering") {
         status.textContent = "SodaGift에서 선물 수령 링크를 발급하고 있어요...";
       } else if (winner.status === "failed") {
@@ -373,9 +394,25 @@ async function renderFromEvent(data) {
 
       if (winner.encryptedGift) {
         try {
-          button.href = await decryptGiftLink(session, winner.encryptedGift);
+          const link = await decryptGiftLink(session, winner.encryptedGift);
+          button.href = link;
           button.classList.remove("hidden");
-          status.classList.add("hidden");
+          if (session.twitch) {
+            button.textContent = winner.whisperStatus === "failed"
+              ? "🎁 DM 전송 실패 · 링크 직접 열기"
+              : "🎁 수령 링크 직접 열기 (백업)";
+            status.textContent = winner.whisperStatus === "sent"
+              ? "Twitch 다이렉트 메시지로 수령 링크를 전송했습니다."
+              : "Twitch 메시지를 전송하지 못했습니다. 아래 버튼으로 열어 주세요.";
+          } else if (pendingClaimWindow && !pendingClaimWindow.closed) {
+            pendingClaimWindow.location.replace(link);
+            pendingClaimWindow = null;
+            button.textContent = "🎁 선물 사이트 다시 열기";
+            status.textContent = "SodaGift 사이트를 새 창으로 열었습니다.";
+          } else {
+            button.textContent = "🎁 선물 사이트 열기";
+            status.textContent = "팝업이 차단되었다면 아래 버튼을 눌러 주세요.";
+          }
           showError("");
         } catch (err) {
           console.error(err);

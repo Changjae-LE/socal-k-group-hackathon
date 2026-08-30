@@ -22,12 +22,13 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from app import config
-from app.services import sodagift
+from app.services import sodagift, twitch
 
 log = logging.getLogger("streamdrop.firestore_fulfillment")
 
 GiftProvider = Callable[[str, str, str, int], Awaitable[dict[str, str]]]
 OptionsProvider = Callable[[str], Awaitable[list[dict[str, Any]]]]
+WhisperProvider = Callable[[str, str], Awaitable[None]]
 
 
 def _decode_value(value: dict[str, Any]) -> Any:
@@ -270,6 +271,7 @@ async def fulfill_once(
     store: FirestoreEventStore,
     gift_provider: GiftProvider = sodagift.get_gift_link,
     options_provider: OptionsProvider = sodagift.get_gift_options,
+    whisper_provider: WhisperProvider = twitch.send_whisper,
     dry_run: bool = False,
 ) -> int:
     snapshot = await store.get_event()
@@ -340,6 +342,18 @@ async def fulfill_once(
         await _mutate_winner(store, event_id, uid, mark_failed)
         raise
 
+    whisper_status = "skipped"
+    if participant.get("twitch"):
+        try:
+            await whisper_provider(
+                uid,
+                f"🎁 StreamDrop 선물이 도착했습니다: {result['link']}",
+            )
+            whisper_status = "sent"
+        except Exception as exc:
+            whisper_status = "failed"
+            log.warning("Twitch whisper failed for winner %s: %s", uid, exc)
+
     def mark_ready(winner: dict[str, Any]) -> None:
         winner.update({
             "productName": result["product_name"],
@@ -347,6 +361,7 @@ async def fulfill_once(
             "giftLink": "",
             "encryptedGift": encrypted,
             "status": "link_ready",
+            "whisperStatus": whisper_status,
         })
         winner.pop("giftOptions", None)
         winner.pop("error", None)
