@@ -10,3 +10,5 @@ orders.log
 firebase-debug.log
 .firebase/
 streamdrop-app/out/
+.omc/
+cloudflared

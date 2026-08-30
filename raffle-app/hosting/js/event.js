@@ -7,6 +7,8 @@ function sdJoinUrl() {
 }
 
 function sdSendTwitchReturnToPublicJoin() {
+  // ?local=1 이면 localhost에서도 리다이렉트하지 않음 (로컬 UI 테스트용)
+  if (new URLSearchParams(location.search).has("local")) return false;
   const publicJoin = sdJoinUrl();
   const here = `${location.origin}${location.pathname}`.replace(/\/$/, "");
   const onLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
@@ -25,7 +27,8 @@ function sdDb() {
 }
 
 function sdEventRef() {
-  return sdDb().doc("events/live");
+  // 로컬/통합 테스트용: window.STREAMDROP_EVENT_DOC로 별도 문서 지정 가능
+  return sdDb().doc(window.STREAMDROP_EVENT_DOC || "events/live");
 }
 
 function sdEmptyEvent() {
@@ -73,7 +76,11 @@ async function sdWriteParticipant(uid, fields) {
       joinedAt: prev.joinedAt || Date.now(),
       twitch: true,
       claimPublicKey: fields.claimPublicKey || prev.claimPublicKey || null,
+      // AI 추천용 취향 프로필 (팔로우 채널 + 카테고리)
+      tasteProfile: fields.tasteProfile || prev.tasteProfile || null,
     };
+    if (prev.recs) next.recs = prev.recs;
+    if (prev.recsStatus) next.recsStatus = prev.recsStatus;
     participants[uid] = next;
     const status = next.country && data.status !== "drawn" ? "open" : (data.status || "idle");
     const written = {

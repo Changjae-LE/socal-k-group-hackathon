@@ -22,7 +22,7 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from app import config
-from app.services import sodagift, twitch
+from app.services import recommend, sodagift, twitch
 
 log = logging.getLogger("streamdrop.firestore_fulfillment")
 
@@ -124,16 +124,31 @@ class FirestoreEventStore:
         winners: list[dict[str, Any]],
         expected_update_time: str,
     ) -> bool:
+        return await self._replace_field("winners", winners, expected_update_time)
+
+    async def replace_participants(
+        self,
+        participants: dict[str, Any],
+        expected_update_time: str,
+    ) -> bool:
+        return await self._replace_field("participants", participants, expected_update_time)
+
+    async def _replace_field(
+        self,
+        field: str,
+        value: Any,
+        expected_update_time: str,
+    ) -> bool:
         params = [
             ("key", config.FIREBASE_WEB_API_KEY),
-            ("updateMask.fieldPaths", "winners"),
+            ("updateMask.fieldPaths", field),
             ("updateMask.fieldPaths", "updatedAt"),
             ("currentDocument.updateTime", expected_update_time),
         ]
         body = {
             "name": self._document_name,
             "fields": {
-                "winners": _encode_value(winners),
+                field: _encode_value(value),
                 "updatedAt": _encode_value(int(time.time() * 1000)),
             },
         }
@@ -216,6 +231,23 @@ def admin_link_backfill_candidates(data: dict[str, Any]) -> list[dict[str, Any]]
     ]
 
 
+def recommendation_candidates(data: dict[str, Any]) -> list[str]:
+    """추첨 후 아직 AI 추천을 받지 못한 낙첨자 uid 목록."""
+    if data.get("status") != "drawn":
+        return []
+    winner_ids = {_uid(w) for w in data.get("winners") or []}
+    out = []
+    for uid, participant in (data.get("participants") or {}).items():
+        if uid in winner_ids:
+            continue
+        if not participant.get("country"):
+            continue
+        if participant.get("recs") or participant.get("recsStatus") == "failed":
+            continue
+        out.append(uid)
+    return out
+
+
 def fulfillment_candidates(data: dict[str, Any]) -> list[dict[str, Any]]:
     """Return winners that requested a gift or approved a legacy product choice."""
     if data.get("status") != "drawn":
@@ -284,6 +316,56 @@ async def _mutate_winner(
             return True
         await asyncio.sleep(0.15)
     return False
+
+
+async def _mutate_participant(
+    store: FirestoreEventStore,
+    event_id: str,
+    uid: str,
+    mutate: Callable[[dict[str, Any]], None],
+) -> bool:
+    for _ in range(4):
+        snapshot = await store.get_event()
+        if not snapshot or snapshot.data.get("eventId") != event_id:
+            return False
+        participants = copy.deepcopy(snapshot.data.get("participants") or {})
+        participant = participants.get(uid)
+        if participant is None:
+            return False
+        mutate(participant)
+        if await store.replace_participants(participants, snapshot.update_time):
+            return True
+        await asyncio.sleep(0.15)
+    return False
+
+
+async def recommend_once(store: FirestoreEventStore) -> int:
+    """낙첨자 1명에게 AI 추천을 계산해 Firestore participants[uid]에 기록."""
+    snapshot = await store.get_event()
+    if not snapshot:
+        return 0
+    rec_uids = recommendation_candidates(snapshot.data)
+    if not rec_uids:
+        return 0
+    uid = rec_uids[0]
+    event_id = str(snapshot.data.get("eventId") or "")
+    participant = (snapshot.data.get("participants") or {})[uid]
+    country = str(participant.get("country") or "")
+    try:
+        items = await recommend.recommend(participant.get("tasteProfile") or [], country)
+    except Exception as exc:
+        log.warning("recommendation failed for %s: %s", uid, exc)
+        items = []
+
+    def mark_recs(target: dict[str, Any]) -> None:
+        target["recs"] = items
+        target["recsStatus"] = "sent" if items else "failed"
+
+    if not await _mutate_participant(store, event_id, uid, mark_recs):
+        return 0
+    log.info("AI recommendations %s for loser %s (%d items)",
+             "ready" if items else "failed", uid, len(items))
+    return 1
 
 
 async def fulfill_once(
@@ -413,6 +495,9 @@ async def run_forever() -> None:
         while True:
             try:
                 processed = await fulfill_once(store)
+                # 당첨자 처리할 게 없을 때만 낙첨자 추천 진행 (당첨자 우선)
+                if not processed:
+                    processed = await recommend_once(store)
             except asyncio.CancelledError:
                 raise
             except Exception:

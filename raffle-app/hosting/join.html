@@ -74,6 +74,11 @@
     <div class="result-emoji">😢</div>
     <h2>아쉽지만 다음 기회에!</h2>
     <p class="gift-note">참여해 주셔서 감사합니다.</p>
+    <div id="recs" class="hidden">
+      <p class="recs-title">🤖 AI가 <span class="nick" id="recs-nick"></span>님 취향으로 고른 선물</p>
+      <div id="recs-list"></div>
+      <a class="btn accent" style="margin-top:14px" href="https://sodagift.com" target="_blank" rel="noopener">🛍 SodaGift에서 선물하기</a>
+    </div>
   </div>
 </div>
 
@@ -82,6 +87,11 @@
 <script src="/js/firebase-config.js?v=12"></script>
 <script src="/js/event.js?v=12"></script>
 <script>
+// 로컬/통합 테스트용: ?edoc=events/test-recs 로 별도 이벤트 문서 사용
+{
+  const edoc = new URLSearchParams(location.search).get("edoc");
+  if (edoc && /^events\/[\w-]+$/.test(edoc)) window.STREAMDROP_EVENT_DOC = edoc;
+}
 const SESSION_KEY = "sd_session";
 const COUNTRIES = { KR:"🇰🇷 South Korea", US:"🇺🇸 United States", JP:"🇯🇵 Japan", CA:"🇨🇦 Canada", AU:"🇦🇺 Australia", GB:"🇬🇧 United Kingdom", FR:"🇫🇷 France", SG:"🇸🇬 Singapore", HK:"🇭🇰 Hong Kong", TW:"🇹🇼 Taiwan", PH:"🇵🇭 Philippines", TH:"🇹🇭 Thailand", VN:"🇻🇳 Vietnam", MY:"🇲🇾 Malaysia", ID:"🇮🇩 Indonesia", IN:"🇮🇳 India", CN:"🇨🇳 China" };
 
@@ -304,6 +314,7 @@ async function registerOnPublicEvent(session) {
     country: session.country || "",
     twitch: true,
     claimPublicKey: session.claimPublicKey,
+    tasteProfile: session.tasteProfile || null,
   });
   session.eventId = written.eventId;
   saveSession(session);
@@ -329,11 +340,47 @@ if (window.STREAMDROP_TWITCH_CLIENT_ID) {
       client_id: window.STREAMDROP_TWITCH_CLIENT_ID,
       redirect_uri: window.STREAMDROP_TWITCH_REDIRECT_URI,
       response_type: "token",
-      scope: "user:read:email",
+      scope: "user:read:email user:read:follows",
       state: oauthState,
     });
     location.assign(twitchAuth);
   };
+}
+
+async function fetchTasteProfile(token, userId) {
+  // AI 추천용 취향 프로필: 팔로우 채널 + 각 채널의 방송 카테고리 (best-effort)
+  try {
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Client-Id": window.STREAMDROP_TWITCH_CLIENT_ID,
+    };
+    const fr = await fetch(
+      `https://api.twitch.tv/helix/channels/followed?user_id=${userId}&first=100`,
+      { headers },
+    );
+    if (!fr.ok) return [];
+    const follows = (await fr.json()).data || [];
+    if (!follows.length) return [];
+    const cats = {};
+    const ids = follows.map((f) => f.broadcaster_id);
+    const cr = await fetch(
+      "https://api.twitch.tv/helix/channels?" +
+        ids.map((id) => `broadcaster_id=${encodeURIComponent(id)}`).join("&"),
+      { headers },
+    );
+    if (cr.ok) {
+      for (const ch of (await cr.json()).data || []) {
+        cats[ch.broadcaster_id] = ch.game_name || "";
+      }
+    }
+    return follows.slice(0, 30).map((f) => ({
+      name: f.broadcaster_name || f.broadcaster_login || "",
+      category: cats[f.broadcaster_id] || "",
+    }));
+  } catch (err) {
+    console.warn("taste profile fetch failed", err);
+    return [];
+  }
 }
 
 async function consumeTwitchHash() {
@@ -371,12 +418,14 @@ async function consumeTwitchHash() {
   if (!user?.id) throw new Error("Twitch 계정 정보를 확인하지 못했습니다.");
   history.replaceState(null, "", location.pathname);
   localStorage.removeItem(TWITCH_STATE_KEY);
+  const tasteProfile = await fetchTasteProfile(token, user.id);
   const session = {
     uid: user.id,
     nick: user.display_name || user.login,
     country: "",
     eventId: "",
     twitch: true,
+    tasteProfile,
   };
   saveSession(session);
   const written = await registerOnPublicEvent(session);
@@ -405,6 +454,45 @@ document.getElementById("btn-enter").onclick = async () => {
     showError("참여 저장에 실패했습니다.");
   }
 };
+
+function renderLoserRecs(session, participant) {
+  const box = document.getElementById("recs");
+  const list = document.getElementById("recs-list");
+  const items = (participant && participant.recs) || [];
+  if (!items.length) { box.classList.add("hidden"); return; }
+  document.getElementById("recs-nick").textContent = session.nick || "";
+  list.replaceChildren();
+  for (const item of items) {
+    const card = document.createElement("div");
+    card.className = "rec-card";
+    if (item.imageUrl) {
+      const img = document.createElement("img");
+      img.src = item.imageUrl;
+      img.alt = "";
+      img.loading = "lazy";
+      img.referrerPolicy = "no-referrer";
+      card.appendChild(img);
+    }
+    const info = document.createElement("div");
+    info.className = "rec-info";
+    const brand = document.createElement("div");
+    brand.className = "rec-brand";
+    brand.textContent = item.brand || "";
+    const name = document.createElement("div");
+    name.className = "rec-name";
+    name.textContent = item.name || "";
+    const price = document.createElement("div");
+    price.className = "rec-price";
+    price.textContent = `${item.amount ?? ""} ${item.currency || ""}`.trim();
+    const reason = document.createElement("div");
+    reason.className = "rec-reason";
+    reason.textContent = item.reason || "";
+    info.append(brand, name, price, reason);
+    card.appendChild(info);
+    list.appendChild(card);
+  }
+  box.classList.remove("hidden");
+}
 
 async function renderFromEvent(data) {
   window.__eventData = data;
@@ -488,8 +576,8 @@ async function renderFromEvent(data) {
         }
       }
     } else if (joined) {
-
       show("sec-lose");
+      renderLoserRecs(session, participant);
     } else {
       show("sec-idle");
     }

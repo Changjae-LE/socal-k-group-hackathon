@@ -22,6 +22,10 @@ SODAGIFT_API_KEY = os.getenv("SODAGIFT_API_KEY", "")
 SODAGIFT_BASE_URL = os.getenv("SODAGIFT_BASE_URL", "https://biz-sandbox-api.sodagift.com").rstrip("/")
 GIFT_SENDER_NAME = os.getenv("GIFT_SENDER_NAME", "StreamDrop")
 
+# 낙첨자 AI 추천 (미설정 시 랜덤 fallback 추천으로 동작)
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+
 # 공개 Firestore 이벤트와 로컬 SodaGift 지급 브리지를 연결한다.
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "hackathon-korean")
 FIREBASE_WEB_API_KEY = os.getenv("FIREBASE_WEB_API_KEY", "AIzaSyDLJZCsHtidnHpOEeEUqT1aX1kdYO8Yz7A")
